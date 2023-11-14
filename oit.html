@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<!--
+  The MIT License (MIT)
+
+  Copyright (c) 2017 Tarek Sherif
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy of
+  this software and associated documentation files (the "Software"), to deal in
+  the Software without restriction, including without limitation the rights to
+  use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+  the Software, and to permit persons to whom the Software is furnished to do so,
+  subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+  FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+  COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+  IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+  CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+-->
+<!-- 
+    Based on "Weighted Blended Order-Independent Transparency"
+    By Morgan McGuire and Louis Bavoil 
+    http://jcgt.org/published/0002/02/09/
+-->
+<html>
+
+<head>
+  <title>WebGL 2 Example: Order-independent Transparency</title>
+  <meta charset="utf-8" />
+  <script src="utils/gl-matrix.js"></script>
+  <script src="utils/utils.js"></script>
+  <script src="node_modules/webgl-obj-loader/dist/webgl-obj-loader.js"></script>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+
+<body>
+  <canvas id="gl-canvas"></canvas>
+
+  <script type="x-shader/vs" id="vertex-accum">
+      #version 300 es
+
+      layout(location=0) in vec3 position;
+      layout(location=1) in vec2 uv;
+      layout(location=2) in vec3 normal;
+
+      layout(std140, column_major) uniform;
+      uniform SceneUniforms {
+          mat4 uProj;
+          mat4 uModelView;
+          vec4 uEyePosition;
+          vec4 uLightPosition;
+      };
+
+      out vec3 vPosition;
+      out vec2 vUV;
+      out vec3 vNormal;
+      flat out vec4 vColor;
+
+      void main() {
+          vec4 pos = uModelView * vec4(position,1.0);
+          vPosition = pos.xyz;
+          vUV = uv;
+          vNormal = mat3(transpose(inverse(uModelView))) * normal;
+          vColor = vec4(1.0,1.0,1.0,0.99);
+          gl_Position =  uProj* uModelView *vec4(position,1.0);
+      }
+    </script>
+  <script type="x-shader/fs" id="fragment-accum">
+      #version 300 es
+      precision highp float;
+
+      layout(std140, column_major) uniform;
+      uniform SceneUniforms {
+          mat4 uProj;
+          mat4 uModelView;
+          vec4 uEyePosition;
+          vec4 uLightPosition;
+      };
+
+      uniform sampler2D uTexture;
+
+      in vec3 vPosition;
+      in vec2 vUV;
+      in vec3 vNormal;
+      flat in vec4 vColor;
+
+      layout(location=0) out vec4 accumColor;
+      layout(location=1) out float accumAlpha;
+
+      float weight(float z, float a) {
+          return clamp(pow(min(1.0, a * 10.0) + 0.01, 3.0) * 1e8 * pow(1.0 - z * 0.9, 3.0), 1e-2, 3e3);
+      }
+
+      void main() {
+          vec3 position = vPosition.xyz;
+          vec3 normal = normalize(vNormal.xyz);
+          vec2 uv = vUV;
+
+          vec4 baseColor = vColor * texture(uTexture, uv);
+          vec3 eyeDirection = normalize(uEyePosition.xyz - position);
+          vec3 lightVec = uLightPosition.xyz - position;
+          vec3 lightDirection = normalize(lightVec);
+          vec3 reflectionDirection = reflect(-lightDirection, normal);
+          float nDotL = max(dot(lightDirection, normal), 0.0);
+          float diffuse = nDotL;
+          float ambient = 0.2;
+          float specular = pow(max(dot(reflectionDirection, eyeDirection), 0.0), 20.0);
+
+          vec4 color = vec4((ambient + diffuse + specular) * baseColor.rgb, vColor.a);
+          color.rgb *= color.a;
+          float w =1.0;
+          accumColor = vec4(color.rgb * w, color.a);
+
+          accumAlpha = color.a * w;
+      }
+    </script>
+  <script type="x-shader/vs" id="vertex-quad">
+      #version 300 es
+
+      layout(location=0) in vec4 aPosition;
+
+      void main() {
+          gl_Position = aPosition;
+      }
+    </script>
+
+  <script type="x-shader/fs" id="fragment-draw">
+      #version 300 es
+      precision highp float;
+
+      uniform sampler2D uAccumulate;
+      uniform sampler2D uAccumulateAlpha;
+      out vec4 fragColor;
+      void main() {
+          ivec2 fragCoord = ivec2(gl_FragCoord.xy);
+          vec4 accum = texelFetch(uAccumulate, fragCoord, 0);
+          float a = 1.0 - accum.a;
+          accum.a = texelFetch(uAccumulateAlpha, fragCoord, 0).r;
+          fragColor = vec4(a * accum.rgb / clamp(accum.a, 0.001, 50000.0), a);
+      }
+    </script>
+  <script type="x-shader/fs" id="screen-draw">
+      #version 300 es
+      precision highp float;
+
+      
+      uniform sampler2D screen;
+      
+      out vec4 fragColor;
+      void main() {
+          ivec2 fragCoord = ivec2(gl_FragCoord.xy);
+          fragColor = vec4(texelFetch(screen, fragCoord,0).rgb, 1.0f);
+      }
+    </script>
+  <script type="x-shader/vs" id="head_vert">
+      #version 300 es
+
+      layout(location=0) in vec3 position;
+      layout(location=1) in vec2 uv;
+      layout(location=2) in vec3 normal;
+
+      layout(std140, column_major) uniform;
+      uniform SceneUniforms {
+          mat4 uProj;
+          mat4 uModelView;
+          vec4 uEyePosition;
+          vec4 uLightPosition;
+      };
+
+      out vec3 vPosition;
+      out vec2 vUV;
+      out vec3 vNormal;
+      flat out vec4 vColor;
+
+      void main() {
+          vec4 pos = uModelView * vec4(position,1.0);
+          vPosition = pos.xyz;
+          vUV = uv;
+          vNormal = mat3(transpose(inverse(uModelView))) * normal;
+          vColor = vec4(1.0,0.0,1.0,1.0);
+          gl_Position =  uProj* uModelView *vec4(position,1.0);
+      }
+    </script>
+  <script type="x-shader/fs" id="head_frag">
+      #version 300 es
+      precision highp float;
+
+      layout(std140, column_major) uniform;
+      uniform SceneUniforms {
+          mat4 uProj;
+          mat4 uModelView;
+          vec4 uEyePosition;
+          vec4 uLightPosition;
+      };
+      uniform sampler2D uTexture;
+
+      in vec3 vPosition;
+      in vec2 vUV;
+      in vec3 vNormal;
+      in vec4 vColor;
+
+      out vec4 fragColor;
+
+      void main() {
+          fragColor = vec4(1.0,0.0,0.0,1.0);
+      }
+    </script>
+  <script>
+    var keys = {};
+    let then = 0;
+    var mouse_pressed = false;
+    var drag_angles = [0, 0];
+    var mouseLast = [0, 0];
+    var scale = 1;
+    var canvas = document.getElementById("gl-canvas");
+
+    function initApp(meshes) {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      var gl = canvas.getContext("webgl2", { antialias: false });
+
+      if (!gl) {
+        console.error("WebGL 2 not available");
+        document.body.innerHTML =
+          "This example requires WebGL 2 which is unavailable on this system.";
+      }
+
+      gl.clearColor(0.0, 0.0, 0.0, 1.0);
+      gl.enable(gl.BLEND);
+      gl.depthMask(false);
+
+      if (!gl.getExtension("EXT_color_buffer_float")) {
+        console.error("FLOAT color buffer not available");
+        document.body.innerHTML =
+          "This example requires EXT_color_buffer_float which is unavailable on this system.";
+      }
+
+      /////////////////////////
+      // OBJECT DESCRIPTIONS
+      /////////////////////////
+
+      var NUM_SPHERES = 32;
+      var NUM_PER_ROW = 8;
+      var RADIUS = 0.6;
+      var spheres = new Array(NUM_SPHERES);
+
+      var colorData = new Float32Array(NUM_SPHERES * 4);
+      var modelMatrixData = new Float32Array(NUM_SPHERES * 16);
+
+      for (var i = 0; i < NUM_SPHERES; ++i) {
+        var angle = (2 * Math.PI * (i % NUM_PER_ROW)) / NUM_PER_ROW;
+        var x = Math.sin(angle) * RADIUS;
+        var y = Math.floor(i / NUM_PER_ROW) / (NUM_PER_ROW / 4) - 0.75;
+        var z = Math.cos(angle) * RADIUS;
+        spheres[i] = {
+          scale: [0.8, 0.8, 0.8],
+          rotate: [0, 0, 0], // Will be used for global rotation
+          translate: [x, y, z],
+          modelMatrix: mat4.create(),
+        };
+
+        colorData.set(
+          vec4.fromValues(
+            Math.sqrt(Math.random()),
+            Math.sqrt(Math.random()),
+            Math.sqrt(Math.random()),
+            0.5
+          ),
+          i * 4
+        );
+      }
+
+      /////////////////////////
+      // ACCUMULATION PROGRAM
+      /////////////////////////
+
+      var accumVsSource = document.getElementById("vertex-accum").text.trim();
+      var accumFsSource = document
+        .getElementById("fragment-accum")
+        .text.trim();
+
+      var accumVertexShader = gl.createShader(gl.VERTEX_SHADER);
+      gl.shaderSource(accumVertexShader, accumVsSource);
+      gl.compileShader(accumVertexShader);
+
+      if (!gl.getShaderParameter(accumVertexShader, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(accumVertexShader));
+      }
+
+      var accumFragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+      gl.shaderSource(accumFragmentShader, accumFsSource);
+      gl.compileShader(accumFragmentShader);
+
+      if (!gl.getShaderParameter(accumFragmentShader, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(accumFragmentShader));
+      }
+
+      var accumProgram = gl.createProgram();
+      gl.attachShader(accumProgram, accumVertexShader);
+      gl.attachShader(accumProgram, accumFragmentShader);
+      gl.linkProgram(accumProgram);
+
+      if (!gl.getProgramParameter(accumProgram, gl.LINK_STATUS)) {
+        console.error(gl.getProgramInfoLog(accumProgram));
+      }
+
+      /////////////////////
+      // HEAD PROGRAM
+      /////////////////////
+
+      var headVsSource = document.getElementById("head_vert").text.trim();
+      var headFsSource = document.getElementById("head_frag").text.trim();
+
+      var headVertexShader = gl.createShader(gl.VERTEX_SHADER);
+      gl.shaderSource(headVertexShader, headVsSource);
+      gl.compileShader(headVertexShader);
+
+      if (!gl.getShaderParameter(headVertexShader, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(headVertexShader));
+      }
+
+      var headFragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+      gl.shaderSource(headFragmentShader, headFsSource);
+      gl.compileShader(headFragmentShader);
+
+      if (!gl.getShaderParameter(headFragmentShader, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(headFragmentShader));
+      }
+
+      var headProgram = gl.createProgram();
+      gl.attachShader(headProgram, headVertexShader);
+      gl.attachShader(headProgram, headFragmentShader);
+      gl.linkProgram(headProgram);
+
+      if (!gl.getProgramParameter(headProgram, gl.LINK_STATUS)) {
+        console.error(gl.getProgramInfoLog(headProgram));
+      }
+
+      /////////////////////
+      // COMPOSITE PROGRAM
+      /////////////////////
+
+      var quadVsSource = document.getElementById("vertex-quad").text.trim();
+      var drawFsSource = document.getElementById("fragment-draw").text.trim();
+
+      var drawVertexShader = gl.createShader(gl.VERTEX_SHADER);
+      gl.shaderSource(drawVertexShader, quadVsSource);
+      gl.compileShader(drawVertexShader);
+
+      if (!gl.getShaderParameter(drawVertexShader, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(drawVertexShader));
+      }
+
+      var drawFragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+      gl.shaderSource(drawFragmentShader, drawFsSource);
+      gl.compileShader(drawFragmentShader);
+
+      if (!gl.getShaderParameter(drawFragmentShader, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(drawFragmentShader));
+      }
+
+      var drawProgram = gl.createProgram();
+      gl.attachShader(drawProgram, drawVertexShader);
+      gl.attachShader(drawProgram, drawFragmentShader);
+      gl.linkProgram(drawProgram);
+
+      if (!gl.getProgramParameter(drawProgram, gl.LINK_STATUS)) {
+        console.error(gl.getProgramInfoLog(drawProgram));
+      }
+
+      /////////////////////
+      // SCREEM PROGRAM
+      /////////////////////
+
+      var quadVsSource = document.getElementById("vertex-quad").text.trim();
+      var drawFsSource = document.getElementById("screen-draw").text.trim();
+
+      var drawVertexShader = gl.createShader(gl.VERTEX_SHADER);
+      gl.shaderSource(drawVertexShader, quadVsSource);
+      gl.compileShader(drawVertexShader);
+
+      if (!gl.getShaderParameter(drawVertexShader, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(drawVertexShader));
+      }
+
+      var drawFragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+      gl.shaderSource(drawFragmentShader, drawFsSource);
+      gl.compileShader(drawFragmentShader);
+
+      if (!gl.getShaderParameter(drawFragmentShader, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(drawFragmentShader));
+      }
+
+      var screenProgram = gl.createProgram();
+      gl.attachShader(screenProgram, drawVertexShader);
+      gl.attachShader(screenProgram, drawFragmentShader);
+      gl.linkProgram(screenProgram);
+
+      if (!gl.getProgramParameter(screenProgram, gl.LINK_STATUS)) {
+        console.error(gl.getProgramInfoLog(screenProgram));
+      }
+
+
+
+      /////////////////////////
+      // GET UNIFORM LOCATIONS
+      /////////////////////////
+
+      var sceneUniformsLocation = gl.getUniformBlockIndex(
+        accumProgram,
+        "SceneUniforms"
+      );
+      gl.uniformBlockBinding(accumProgram, sceneUniformsLocation, 0);
+
+      var modelMatrixLocation = gl.getUniformLocation(accumProgram, "uModel");
+      var textureLocation = gl.getUniformLocation(accumProgram, "uTexture");
+
+      var sceneUniformsLocationHead = gl.getUniformBlockIndex(
+        headProgram,
+        "SceneUniforms"
+      );
+      gl.uniformBlockBinding(headProgram, sceneUniformsLocationHead, 0);
+
+      var _modelMatrixLocation = gl.getUniformLocation(headProgram, "uModel");
+      var _textureLocation = gl.getUniformLocation(headProgram, "uTexture");
+
+      var accumLocation = gl.getUniformLocation(drawProgram, "uAccumulate");
+      var accumAlphaLocation = gl.getUniformLocation(
+        drawProgram,
+        "uAccumulateAlpha"
+      );
+
+      var screenTextLoc = gl.getUniformLocation(screenProgram, "screen");
+
+      ////////////////////////////////
+      //  SET UP FRAMEBUFFERS
+      ////////////////////////////////
+
+      var opaqueBuffer = gl.createFramebuffer();
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, opaqueBuffer);
+      gl.activeTexture(gl.TEXTURE0);
+
+      var headColorTarget = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, headColorTarget);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texStorage2D(
+        gl.TEXTURE_2D,
+        1,
+        gl.RGBA16F,
+        gl.drawingBufferWidth,
+        gl.drawingBufferHeight
+      );
+      gl.framebufferTexture2D(
+        gl.FRAMEBUFFER,
+        gl.COLOR_ATTACHMENT0,
+        gl.TEXTURE_2D,
+        headColorTarget,
+        0
+      );
+
+      var depthHeadTarget = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, depthHeadTarget);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texStorage2D(
+        gl.TEXTURE_2D,
+        1,
+        gl.DEPTH_COMPONENT16,
+        gl.drawingBufferWidth,
+        gl.drawingBufferHeight
+      );
+      gl.framebufferTexture2D(
+        gl.FRAMEBUFFER,
+        gl.DEPTH_ATTACHMENT,
+        gl.TEXTURE_2D,
+        depthHeadTarget,
+        0
+      );
+
+      var accumBuffer = gl.createFramebuffer();
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, accumBuffer);
+      gl.activeTexture(gl.TEXTURE0);
+
+      var accumTarget = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, accumTarget);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texStorage2D(
+        gl.TEXTURE_2D,
+        1,
+        gl.RGBA16F,
+        gl.drawingBufferWidth,
+        gl.drawingBufferHeight
+      );
+      gl.framebufferTexture2D(
+        gl.FRAMEBUFFER,
+        gl.COLOR_ATTACHMENT0,
+        gl.TEXTURE_2D,
+        accumTarget,
+        0
+      );
+
+      var accumAlphaTarget = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, accumAlphaTarget);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texStorage2D(
+        gl.TEXTURE_2D,
+        1,
+        gl.R16F,
+        gl.drawingBufferWidth,
+        gl.drawingBufferHeight
+      );
+      gl.framebufferTexture2D(
+        gl.FRAMEBUFFER,
+        gl.COLOR_ATTACHMENT1,
+        gl.TEXTURE_2D,
+        accumAlphaTarget,
+        0
+      );
+
+      var depthTarget = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, depthTarget);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texStorage2D(
+        gl.TEXTURE_2D,
+        1,
+        gl.DEPTH_COMPONENT16,
+        gl.drawingBufferWidth,
+        gl.drawingBufferHeight
+      );
+      gl.framebufferTexture2D(
+        gl.FRAMEBUFFER,
+        gl.DEPTH_ATTACHMENT,
+        gl.TEXTURE_2D,
+        depthTarget,
+        0
+      );
+
+      gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+      /////////////////////
+      // SET UP GEOMETRY
+      /////////////////////
+
+
+      console.log(meshes.hair);
+      console.log(meshes.head);
+
+
+
+      // OBJ.initMeshBuffers(gl, meshes.hair);
+
+      var hairArray = gl.createVertexArray();
+      gl.bindVertexArray(hairArray);
+
+      var positionBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+      gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Float32Array(meshes.hair.vertices),
+        gl.STATIC_DRAW
+      );
+      gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+      gl.enableVertexAttribArray(0);
+
+      var uvBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, uvBuffer);
+      gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Float32Array(meshes.hair.textures),
+        gl.STATIC_DRAW
+      );
+      gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
+      gl.enableVertexAttribArray(1);
+
+      var normalBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+      gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Float32Array(meshes.hair.vertexNormals),
+        gl.STATIC_DRAW
+      );
+      gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 0, 0);
+      gl.enableVertexAttribArray(2);
+
+      var indices = gl.createBuffer();
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indices);
+      gl.bufferData(
+        gl.ELEMENT_ARRAY_BUFFER,
+        new Uint16Array(meshes.hair.indices),
+        gl.STATIC_DRAW
+      );
+
+      //HEAD
+      ////////////////////////
+      var headArray = gl.createVertexArray();
+      gl.bindVertexArray(headArray);
+
+      var headPositionBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, headPositionBuffer);
+      gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Float32Array(meshes.head.vertices),
+        gl.STATIC_DRAW
+      );
+      gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+      gl.enableVertexAttribArray(0);
+
+      var headuvBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, headuvBuffer);
+      gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Float32Array(meshes.head.textures),
+        gl.STATIC_DRAW
+      );
+      gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
+      gl.enableVertexAttribArray(1);
+
+      var headnormalBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, headnormalBuffer);
+      gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Float32Array(meshes.head.vertexNormals),
+        gl.STATIC_DRAW
+      );
+      gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 0, 0);
+      gl.enableVertexAttribArray(2);
+
+      var headIindices = gl.createBuffer();
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, headIindices);
+      gl.bufferData(
+        gl.ELEMENT_ARRAY_BUFFER,
+        new Uint16Array(meshes.head.indices),
+        gl.STATIC_DRAW
+      );
+
+      // Quad for draw pass
+      var quadArray = gl.createVertexArray();
+      gl.bindVertexArray(quadArray);
+
+      var quadPositionBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, quadPositionBuffer);
+      gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Float32Array([-1, 1, -1, -1, 1, -1, -1, 1, 1, -1, 1, 1]),
+        gl.STATIC_DRAW
+      );
+      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+      gl.enableVertexAttribArray(0);
+
+      //////////////////////
+      // SET UP UNIFORMS
+      //////////////////////
+
+      var eyePosition = vec3.fromValues(0, 0, 20);
+
+      var lightPosition = vec3.fromValues(1, 1, 2);
+
+      var cam = new Camera(
+        canvas,
+        eyePosition,
+        vec3.fromValues(eyePosition[0], eyePosition[1], eyePosition[2] - 1),
+        vec3.fromValues(0, 1, 0),
+        false,
+        Math.PI / 2,
+        100,
+        0.1
+      );
+
+      var modelView = mat4.create();
+      var model = mat4.create();
+      mat4.multiply(modelView, model, cam.viewMatrix);
+
+      var sceneUniformData = new Float32Array(40);
+      sceneUniformData.set(cam.projMatrix);
+      sceneUniformData.set(modelView, 16);
+      sceneUniformData.set(cam.position, 32);
+      sceneUniformData.set(lightPosition, 36);
+
+      var image = new Image();
+
+      var sceneUniformBuffer = gl.createBuffer();
+      gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, sceneUniformBuffer);
+      gl.bufferData(gl.UNIFORM_BUFFER, sceneUniformData, gl.STATIC_DRAW);
+      gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, sceneUniformBuffer);
+      gl.bufferData(gl.UNIFORM_BUFFER, sceneUniformData, gl.STATIC_DRAW);
+
+      image.onload = function () {
+        ///////////////////////
+        // BIND TEXTURES
+        ///////////////////////
+
+        var texture = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(
+          gl.TEXTURE_2D,
+          gl.TEXTURE_MIN_FILTER,
+          gl.LINEAR_MIPMAP_LINEAR
+        );
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+
+        var levels = (levels =
+          Math.floor(Math.log2(Math.max(this.width, this.height))) + 1);
+        gl.texStorage2D(
+          gl.TEXTURE_2D,
+          levels,
+          gl.RGBA8,
+          image.width,
+          image.height
+        );
+        gl.texSubImage2D(
+          gl.TEXTURE_2D,
+          0,
+          0,
+          0,
+          image.width,
+          image.height,
+          gl.RGBA,
+          gl.UNSIGNED_BYTE,
+          image
+        );
+        gl.generateMipmap(gl.TEXTURE_2D);
+
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, accumTarget);
+
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D, accumAlphaTarget);
+
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(gl.TEXTURE_2D, headColorTarget);
+        gl.useProgram(screenProgram);
+        gl.uniform1i(screenTextLoc, 3);
+
+        gl.useProgram(accumProgram);
+        gl.uniform1i(textureLocation, 0);
+
+        gl.useProgram(drawProgram);
+        gl.uniform1i(accumLocation, 1);
+        gl.uniform1i(accumAlphaLocation, 2);
+
+
+
+        var rotationMatrix = mat4.create();
+
+        function draw(now) {
+          now *= 0.001; // seconds;
+          const deltaTime = now - then;
+          then = now;
+          cam.Update(keys, deltaTime);
+
+          var modelView = mat4.create();
+          var model = mat4.create();
+          mat4.rotateX(model, model, -45);
+          mat4.rotateX(model, model, drag_angles[0]);
+          mat4.rotateY(model, model, 0);
+          mat4.rotateZ(model, model, drag_angles[1]);
+          mat4.scale(model, model, vec3.fromValues(scale, scale, scale));
+          mat4.multiply(modelView, cam.viewMatrix, model);
+
+          var sceneUniformData = new Float32Array(40);
+          sceneUniformData.set(cam.projMatrix);
+          sceneUniformData.set(modelView, 16);
+          sceneUniformData.set(cam.position, 32);
+          sceneUniformData.set(lightPosition, 36);
+          gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, sceneUniformBuffer);
+          gl.bufferSubData(gl.UNIFORM_BUFFER, 0, sceneUniformData);
+          // gl.bindBufferBase(gl.UNIFORM_BUFFER,1, sceneUniformBuffer);
+          // gl.bufferSubData(gl.UNIFORM_BUFFER, 1, sceneUniformData);
+
+          ////////////////////
+          // DRAW HAIR AND AVATAR
+          ////////////////////
+          gl.depthMask(true);
+          gl.disable(gl.BLEND);
+          gl.depthFunc(gl.LESS);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, opaqueBuffer);
+          gl.useProgram(headProgram);
+          gl.bindVertexArray(headArray);
+
+          gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+          gl.drawElements(
+            gl.TRIANGLES,
+            meshes.head.indices.length,
+            gl.UNSIGNED_SHORT,
+            0
+          );
+
+
+
+          ///
+          gl.depthMask(false);
+          gl.enable(gl.BLEND);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, accumBuffer);
+          gl.useProgram(accumProgram);
+          gl.bindVertexArray(hairArray);
+
+          gl.clear(gl.COLOR_BUFFER_BIT);
+          gl.blendFuncSeparate(
+            gl.ONE,
+            gl.ONE,
+            gl.ZERO,
+            gl.ONE_MINUS_SRC_ALPHA
+          );
+          gl.drawElements(
+            gl.TRIANGLES,
+            meshes.hair.indices.length,
+            gl.UNSIGNED_SHORT,
+            0
+          );
+
+          ///COMPOSITION
+          // //BLITT
+          // gl.bindFramebuffer(gl.READ_FRAMEBUFFER, opaqueBuffer);
+          // gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+          // gl.blitFramebuffer(0, 0, canvas.width, canvas.height,
+          //   0, 0, canvas.width, canvas.height,
+          //   gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT,
+          //   gl.NEAREST,)
+
+          gl.depthFunc(gl.ALWAYS);
+          gl.enable(gl.BLEND);
+          gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+          gl.bindFramebuffer(gl.FRAMEBUFFER, opaqueBuffer);
+          gl.useProgram(drawProgram);
+          gl.bindVertexArray(quadArray);
+          // gl.clear(gl.COLOR_BUFFER_BIT);
+          gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+          gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+
+          /////////
+          // DRAW
+          /////////
+          gl.disable(gl.DEPTH_TEST);
+          gl.depthMask(gl.TRUE);
+          gl.disable(gl.BLEND);
+          // bind backbuffer
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+          gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+          gl.clearColor(0.0, 0.0, 0.0, 1.0);
+          gl.useProgram(screenProgram);
+          gl.bindVertexArray(quadArray);
+          gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+
+          requestAnimationFrame(draw);
+        }
+
+        requestAnimationFrame(draw);
+      };
+
+      image.src = "resources/T_StandardWSet_Alpha.png";
+    }
+
+    function getExtents(positions) {
+      const min = positions.slice(0, 3);
+      const max = positions.slice(0, 3);
+      for (let i = 3; i < positions.length; i += 3) {
+        for (let j = 0; j < 3; ++j) {
+          const v = positions[i + j];
+          min[j] = Math.min(v, min[j]);
+          max[j] = Math.max(v, max[j]);
+        }
+      }
+      return { min, max };
+    }
+
+    function getGeometriesExtents(geometries) {
+      return geometries.reduce(
+        ({ min, max }, { data }) => {
+          const minMax = getExtents(geometries);
+          return {
+            min: min.map((min, ndx) => Math.min(minMax.min[ndx], min)),
+            max: max.map((max, ndx) => Math.max(minMax.max[ndx], max)),
+          };
+        },
+        {
+          min: Array(3).fill(Number.POSITIVE_INFINITY),
+          max: Array(3).fill(Number.NEGATIVE_INFINITY),
+        }
+      );
+    }
+
+    //#region callbacks
+
+    window.onload = function () {
+      OBJ.downloadMeshes(
+        {
+          hair: "./resources/hair__.obj",
+          head: "./resources/sph__.obj",  // located in the models folder on the server
+        },
+        initApp
+      );
+    };
+    window.addEventListener("keydown", (e) => {
+      keys[e.key] = true;
+    });
+    window.addEventListener("keyup", (e) => {
+      keys[e.key] = false;
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      var x = e.clientX;
+      var y = e.clientY;
+
+      if (mouse_pressed) {
+        var speed = 10 / canvas.clientHeight;
+        drag_angles[0] += speed * (y - mouseLast[1]);
+        drag_angles[1] += speed * (x - mouseLast[0]);
+      }
+
+      mouseLast[0] = x;
+      mouseLast[1] = y;
+    });
+    window.addEventListener("mouseup", (e) => {
+      mouse_pressed = false;
+    });
+    window.addEventListener("mousedown", (e) => {
+      mouse_pressed = true;
+    });
+    window.addEventListener("mousewheel", (e) => {
+      scale += e.deltaY * -0.0005;
+    });
+
+    //#endregion
+    class Camera {
+      constructor(canvas, pos, fwd, up, isOrtho, fov, far, near) {
+        this.position = pos;
+        this.initialPosition = pos;
+        this.forward = fwd;
+        this.up = up;
+
+        this.isOrtho = isOrtho;
+
+        this.fov = fov;
+        this.far = far;
+        this.near = near;
+
+        this.viewMatrix = new Float32Array(16);
+        this.projMatrix = new Float32Array(16);
+
+        this.turnSpeed = 90;
+        this.speed = 1;
+        this.ang = 0;
+        this.roll = 0;
+        this.elev = 0;
+
+        mat4.lookAt(this.viewMatrix, this.position, this.forward, this.up);
+        this.Refresh(canvas);
+      }
+      Refresh(canvas) {
+        if (!this.isOrtho) {
+          mat4.perspective(
+            this.projMatrix,
+            Math.PI / 2,
+            canvas.clientWidth / canvas.clientHeight,
+            this.near,
+            this.far
+          );
+        } else {
+          mat4.ortho(
+            this.projMatrix,
+            0,
+            canvas.clientWidth,
+            0,
+            canvas.clientHeight,
+            this.near,
+            this.far
+          );
+        }
+      }
+
+      Update(keys, deltaTime) {
+        if (keys["W"] || keys["S"] || keys["w"] || keys["s"]) {
+          const direction = keys["W"] || keys["w"] ? -1 : 1;
+          // w
+          this.position[0] +=
+            this.forward[0] * deltaTime * this.speed * direction;
+          this.position[1] +=
+            this.forward[1] * deltaTime * this.speed * direction;
+          this.position[2] +=
+            this.forward[2] * deltaTime * this.speed * direction;
+        }
+
+        if (keys["A"] || keys["D"] || keys["a"] || keys["d"]) {
+          const direction = keys["A"] || keys["a"] ? -1 : 1;
+
+          var forward = vec3.fromValues(
+            this.forward[0],
+            this.forward[1],
+            this.forward[2]
+          );
+          var up = vec3.fromValues(this.up[0], this.up[1], this.up[2]);
+          var side = vec3.create();
+          vec3.cross(side, up, forward);
+
+          this.position[0] += side[0] * deltaTime * this.speed * direction;
+          this.position[1] += side[1] * deltaTime * this.speed * direction;
+          this.position[2] += side[2] * deltaTime * this.speed * direction;
+        }
+
+        if (keys["Q"] || keys["E"] || keys["q"] || keys["e"]) {
+          const direction = keys["Q"] || keys["q"] ? -10 : 10;
+
+          this.position[0] += this.up[0] * deltaTime * this.speed * direction;
+          this.position[1] += this.up[1] * deltaTime * this.speed * direction;
+          this.position[2] += this.up[2] * deltaTime * this.speed * direction;
+        }
+
+        if (keys["R"] || keys["r"]) {
+          this.position[0] = this.initialPosition[0];
+          this.position[1] = this.initialPosition[1];
+          this.position[2] = this.initialPosition[2];
+
+          this.forward[0] = 0;
+          this.forward[1] = 0;
+          this.forward[2] = 1;
+        }
+
+        // mat4.lookAt(this.viewMatrix, this.position, vec3.fromValues(this.position[0] - this.forward[0], this.position[1] - this.forward[1], this.position[2] - this.forward[2]), this.up);
+        mat4.lookAt(
+          this.viewMatrix,
+          this.position,
+          vec3.fromValues(
+            this.position[0] - this.forward[0],
+            this.position[1] - this.forward[1],
+            this.position[2] - this.forward[2]
+          ),
+          this.up
+        );
+      }
+    }
+  </script>
+</body>
+
+</html>
