@@ -80,16 +80,16 @@
         #define MODIFIED_TWITTER 3
 
         //From: http://casual-effects.com/research/McGuire2017Transparency/index.html
-        #define PERCEP_PAPER 3
+        #define PERCEP_PAPER 4
 
         // My own. An 8th degree polynomial on depth.
-        #define POLY_D 4
+        #define POLY_D 5
 
         ////////////////////////
         // SET WEIGHT FUNCTION
         ////////////////////////
 
-        #define WEIGHT_FUNC TWITTER
+        #define WEIGHT_FUNC 5
 
         layout(std140, column_major) uniform;
 
@@ -189,15 +189,15 @@
         var Z_DELTA = 0.01;
 
         var QUAD_COLORS = [
-            [1.0,1.0,1.0],
-            [0.38*2.5,0.22*2.5,0.2*2.5],
-            [0.38*2.5,0.22*2.5,0.2*2.5],
-            [0.38*2.5,0.22*2.5,0.2*2.5],
-            [0.38*2.5,0.22*2.5,0.2*2.5],
-            [0.38*2.5,0.22*2.5,0.2*2.5],
-            [0.38*2.5,0.22*2.5,0.2*2.5]
+            [1.0,1.0,0.8],
+            [0.38,0.22,0.2],
+            [0.9,0.22,0.2],
+            [0.5,0.22,0.2],
+            [0.5,0.22,0.2],
+            [0.38,0.22,0.2],
+            [0.38,0.22,0.2]
         ];
-        QUAD_ALPHA = 0.95;
+        QUAD_ALPHA = 0.99;
 
         var NUM_QUADS = QUAD_COLORS.length;
         var quads = new Array(NUM_QUADS);
@@ -209,6 +209,7 @@
         for (var i = 0; i < NUM_QUADS; ++i) {
             var quadUniformData = new Float32Array(8);
             quadUniformData.set(QUAD_COLORS[i]);
+            // if()
             quadUniformData[3] = QUAD_ALPHA;
             quadUniformData[4] = x;
             quadUniformData[5] = y;

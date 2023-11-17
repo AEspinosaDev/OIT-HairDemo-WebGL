@@ -13,6 +13,7 @@ var drag_angles = [0, 0];
 var mouseLast = [0, 0];
 var scale = 1;
 var canvas = document.getElementById("gl-canvas");
+var renderHair = true;
 
 function initApp(meshes) {
   canvas.width = window.innerWidth;
@@ -312,8 +313,12 @@ function initApp(meshes) {
     // CONFIGURE
     gl.enable(gl.DEPTH_TEST);
     gl.depthMask(true);
-    gl.disable(gl.BLEND);
-    gl.depthFunc(gl.LESS);
+    gl.enable(gl.BLEND);
+    // gl.disable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+    // gl.depthFunc(gl.LESS);
+    gl.depthFunc(gl.LEQUAL);
+
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
 
     //CLEAR
@@ -328,38 +333,84 @@ function initApp(meshes) {
       gl.UNSIGNED_SHORT,
       0
     );
+    // gl.disable(gl.DEPTH_TEST);
+    // gl.useProgram(accumProgram);
+    // gl.enable(gl.CULL_FACE); //FRONT FACE
+    // gl.cullFace(gl.BACK);
+    // gl.bindVertexArray(hairArray);
+    // gl.drawElements(
+    //   gl.TRIANGLES,
+    //   meshes.hair.indices.length,
+    //   gl.UNSIGNED_SHORT,
+    //   0
+    // );
+
+
     /////////////////////////////////////////////////////////////////////////////////////////////
     //TRANSPARENT PASS
     ///////////////////////////////
+    if (renderHair) {
+      // CONFIGURE
+    gl.enable(gl.DEPTH_TEST);
 
-    // CONFIGURE
-    gl.depthMask(false);
-    gl.enable(gl.BLEND);
-    // gl.blendFunc(0,gl.ONE,gl.ONE);
-    // gl.blendFunc(1,gl.ZERO,gl.ONE_MINUS_SRC_ALPHA);
-    gl.blendFuncSeparate(
-      gl.ONE,
-      gl.ONE,
-      gl.ZERO,
-      gl.ONE_MINUS_SRC_ALPHA //change this i think
-    );
+      gl.enable(gl.CULL_FACE); //FRONT FACE
+      gl.cullFace(gl.BACK);
 
-    //CLEAR
-    gl.bindFramebuffer(gl.FRAMEBUFFER, accumBuffer);
-    // gl.clearColor(0.0, 0.0, 0.0, 1.0);
-    gl.clearBufferfv(gl.COLOR, 0, [0.0, 0.0, 0.0, 0.0]);
-    gl.clearBufferfv(gl.COLOR, 1, [1.0, 1.0, 1.0, 1.0]);
-    gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.depthMask(false);
+      gl.enable(gl.BLEND);
+      // gl.blendFunc(0,gl.ONE,gl.ONE);
+      // gl.blendFunc(1,gl.ZERO,gl.ONE_MINUS_SRC_ALPHA);
+      gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE_MINUS_SRC_ALPHA);
 
-    gl.useProgram(accumProgram);
-    gl.bindVertexArray(hairArray);
-    gl.drawElements(
-      gl.TRIANGLES,
-      meshes.hair.indices.length,
-      gl.UNSIGNED_SHORT,
-      0
-    );
+      //CLEAR
+      gl.bindFramebuffer(gl.FRAMEBUFFER, accumBuffer);
+      gl.clearColor(0.0, 0.0, 0.0, 1.0);
+      // gl.clearBufferfv(gl.COLOR, 0, [0.0, 0.0, 0.0, 0.0]);
+      // gl.clearBufferfv(gl.COLOR, 1, [1.0, 1.0, 1.0, 1.0]);
+      gl.clear(gl.COLOR_BUFFER_BIT);
 
+      gl.useProgram(accumProgram);
+      gl.bindVertexArray(hairArray);
+      gl.drawElements(
+        gl.TRIANGLES,
+        meshes.hair.indices.length,
+        gl.UNSIGNED_SHORT,
+        0
+      );
+      /////////////////////////////////////////////////////////////7
+      /////////////////////////////////////////////////////////////7
+      /////////////////////////////////////////////////////////////7
+
+      // CONFIGURE
+      // gl.enable(gl.CULL_FACE); //BACK FACE
+      // gl.cullFace(gl.FRONT);  
+
+      // gl.depthMask(false);
+      // gl.enable(gl.BLEND);
+      // gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE_MINUS_SRC_ALPHA);
+
+      // //CLEAR
+      // gl.bindFramebuffer(gl.FRAMEBUFFER, accumBuffer);
+      // // gl.clear(gl.COLOR_BUFFER_BIT);
+
+      // gl.useProgram(accumProgram);
+      // gl.bindVertexArray(hairArray);
+      // gl.drawElements(
+      //   gl.TRIANGLES,
+      //   meshes.hair.indices.length,
+      //   gl.UNSIGNED_SHORT,
+      //   0
+      // );
+      
+      gl.disable(gl.CULL_FACE);
+
+
+
+    } else {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, accumBuffer);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
     /////////////////////////////////////////////////////////////////////////////////////////////
     ///COMPOSITION PASS
     ///////////////////////////////
@@ -367,7 +418,10 @@ function initApp(meshes) {
     // CONFIGURE
     gl.depthFunc(gl.ALWAYS);
     gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.depthMask(true);
+    // gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.blendFunc(gl.ONE_MINUS_SRC_ALPHA, gl.SRC_ALPHA);
+    // gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
     //CLEAR
     gl.bindFramebuffer(gl.FRAMEBUFFER, opaqueBuffer);
@@ -375,8 +429,34 @@ function initApp(meshes) {
 
     gl.useProgram(compositeProgram);
     gl.bindVertexArray(quadArray);
-    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
+///////////////////////////////////////////////////////////////////////
+    // gl.enable(gl.CULL_FACE); //FRONT FACE
+    //   gl.cullFace(gl.FRONT);
+
+    //   gl.depthMask(false);
+    //   gl.enable(gl.BLEND);
+    //   // gl.blendFunc(0,gl.ONE,gl.ONE);
+    //   // gl.blendFunc(1,gl.ZERO,gl.ONE_MINUS_SRC_ALPHA);
+    //   gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE_MINUS_SRC_ALPHA);
+
+    //   //CLEAR
+    //   gl.bindFramebuffer(gl.FRAMEBUFFER, accumBuffer);
+    //   gl.clearColor(0.0, 0.0, 0.0, 1.0);
+    //   // gl.clearBufferfv(gl.COLOR, 0, [0.0, 0.0, 0.0, 0.0]);
+    //   // gl.clearBufferfv(gl.COLOR, 1, [1.0, 1.0, 1.0, 1.0]);
+    //   gl.clear(gl.COLOR_BUFFER_BIT);
+
+    //   gl.useProgram(accumProgram);
+    //   gl.bindVertexArray(hairArray);
+    //   gl.drawElements(
+    //     gl.TRIANGLES,
+    //     meshes.hair.indices.length,
+    //     gl.UNSIGNED_SHORT,
+    //     0
+    //   )
+/////////////////////////////////////////////////////////////////777
+
 
     ////////////////////////////////////////////////////////////////////////////////////////////
     // RTT
@@ -391,7 +471,7 @@ function initApp(meshes) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
-    
+
     gl.useProgram(screenProgram);
     gl.bindVertexArray(quadArray);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -413,6 +493,9 @@ window.onload = function () {
 };
 window.addEventListener("keydown", (e) => {
   keys[e.key] = true;
+  if (keys["p"] || keys["P"]) {
+    renderHair = renderHair ? false : true;
+  }
 });
 window.addEventListener("keyup", (e) => {
   keys[e.key] = false;
