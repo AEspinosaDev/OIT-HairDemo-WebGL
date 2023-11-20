@@ -1,5 +1,9 @@
 {
   "dependencies": {
+    "@types/dat.gui": "^0.7.12",
     "webgl-obj-loader": "^2.0.8"
+  },
+  "devDependencies": {
+    "dat.gui": "^0.7.9"
   }
 }

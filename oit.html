@@ -1,20 +1,20 @@
 <!DOCTYPE html>
 <!--
- ██╗    ██╗███████╗██╗ ██████╗ ██╗  ██╗████████╗███████╗██████╗     ██████╗ ██╗     ███████╗███╗   ██╗██████╗ ███████╗██████╗ 
+ ██╗    ██╗███████╗██╗ ██████╗ ██╗  ██╗████████╗███████╗██████╗     ██████╗ ██╗     ███████╗███╗   ██╗██████╗ ███████╗██████╗
 ██║    ██║██╔════╝██║██╔════╝ ██║  ██║╚══██╔══╝██╔════╝██╔══██╗    ██╔══██╗██║     ██╔════╝████╗  ██║██╔══██╗██╔════╝██╔══██╗
 ██║ █╗ ██║█████╗  ██║██║  ███╗███████║   ██║   █████╗  ██║  ██║    ██████╔╝██║     █████╗  ██╔██╗ ██║██║  ██║█████╗  ██║  ██║
 ██║███╗██║██╔══╝  ██║██║   ██║██╔══██║   ██║   ██╔══╝  ██║  ██║    ██╔══██╗██║     ██╔══╝  ██║╚██╗██║██║  ██║██╔══╝  ██║  ██║
 ╚███╔███╔╝███████╗██║╚██████╔╝██║  ██║   ██║   ███████╗██████╔╝    ██████╔╝███████╗███████╗██║ ╚████║██████╔╝███████╗██████╔╝
- ╚══╝╚══╝ ╚══════╝╚═╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═════╝     ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═══╝╚═════╝ ╚══════╝╚═════╝ 
+ ╚══╝╚══╝ ╚══════╝╚═╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═════╝     ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═══╝╚═════╝ ╚══════╝╚═════╝
 
 MADE BY
-                                                         
+
  ▄▀█ █▄░█ ▀█▀ █▀█ █▄░█ █ █▀█ █▀▀ █▀ █▀█ █ █▄░█ █▀█ █▀ ▄▀█
  █▀█ █░▀█ ░█░ █▄█ █░▀█ █ █▄█ ██▄ ▄█ █▀▀ █ █░▀█ █▄█ ▄█ █▀█
 -->
-<!-- 
+<!--
     Based on "Weighted Blended Order-Independent Transparency"
-    By Morgan McGuire and Louis Bavoil 
+    By Morgan McGuire and Louis Bavoil
     http://jcgt.org/published/0002/02/09/
 -->
 <html>
@@ -23,6 +23,8 @@ MADE BY
     <meta charset="utf-8" />
     <script src="dependencies/gl-matrix.js"></script>
     <script src="node_modules/webgl-obj-loader/dist/webgl-obj-loader.js"></script>
+    <script src="node_modules/dat.gui/build/dat.gui.js"></script>
+
     <link rel="stylesheet" href="css/style.css" />
   </head>
 
@@ -48,6 +50,7 @@ MADE BY
           vec4 uEyePosition;
           vec4 uLightPosition;
       };
+      uniform vec3 uHairColor;
 
       out vec3 vPosition;
       out vec2 vUV;
@@ -62,7 +65,8 @@ MADE BY
           vUV = uv;
           vNormal = mat3(transpose(inverse(uModelView))) * normal;
 
-          vColor = vec4(0.38*2.5,0.22*2.5,0.2*2.5,0.99); //GINGER
+          vColor = vec4(uHairColor,0.99);
+          //vColor = vec4(0.38*2.5,0.22*2.5,0.2*2.5,0.99); //GINGER
           //vColor = vec4(0.98,0.94,0.74,0.99); //BLONDE
 
 
@@ -124,7 +128,7 @@ MADE BY
           //return clamp(a * depthWeight, 0.01, 1e4);
 
           float tmp = 1.0 - z * 0.99;
-                tmp *= tmp * tmp * 1e4; 
+                tmp *= tmp * tmp * 1e4;
                 return clamp(a * tmp, 1e-3, 3e4);
           //return a*max(pow(10.0,-2.0),min(3000.0,0.03/(pow(10.0,-5.0)+pow((abs(z)/200.0),4.0)))); //EQUATION 9 ORIGINAL PAPER. GOOD FOR MIDDLE DISTANCES
 
@@ -149,7 +153,7 @@ MADE BY
 
           accumColor = vec4(color.rgb *  color.a, color.a)*w;//WITH PER RENDER TARGET BLENDING
           accumColor = vec4(color.rgb * w, color.a);//WITHOUT
-          
+
           accumAlpha = color.a;//WITH PER RENDER TARGET BLENDING
           accumAlpha = color.a * w;//WITHOUT
 
@@ -186,7 +190,7 @@ MADE BY
 
     <!--
     █▀█ █▀█ ▄▀█ █▀█ █░█ █▀▀
-    █▄█ █▀▀ █▀█ ▀▀█ █▄█ ██▄ 
+    █▄█ █▀▀ █▀█ ▀▀█ █▄█ ██▄
     -->
 
     <script type="x-shader/x-vertex" id="head_vert">
@@ -262,7 +266,7 @@ MADE BY
       }
 
       void main() {
-         
+
           //if(texture(uTexture,vUV).r < 0.01) discard;
           fragColor = vec4(phong(vColor.rgb),texture(uTexture,vUV).r);
           fragColor = vec4(phong(vColor.rgb),1.0);
@@ -292,6 +296,7 @@ MADE BY
           fragColor = vec4(texelFetch(screen, fragCoord,0).rgb, 1.0f);
       }
     </script>
+    
 
     <script type="module" src="main.js"></script>
   </body>
