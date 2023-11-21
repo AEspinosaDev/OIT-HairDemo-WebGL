@@ -16,7 +16,6 @@ var canvas = document.getElementById("gl-canvas");
 var renderHair = true;
 var useInput = true;
 
-
 function initApp(meshes) {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
@@ -38,7 +37,6 @@ function initApp(meshes) {
       "This example requires EXT_color_buffer_float which is unavailable on this system.";
   }
 
-
   // ACCUMULATION PROGRAM
   var accumProgram = createProgram("vertex-accum", "fragment-accum");
   // OPAQUE PROGRAM
@@ -50,7 +48,9 @@ function initApp(meshes) {
 
   // GET UNIFORM LOCATIONS
   var hairTextLocation = gl.getUniformLocation(accumProgram, "uTexture");
-  var hairColorLocation = gl.getUniformLocation(accumProgram, "uHairColor")
+  var hairColorLocation = gl.getUniformLocation(accumProgram, "uHairColor");
+  var hairOpacityLocation = gl.getUniformLocation(accumProgram, "uHairOpacity")
+  var skinColorLocation = gl.getUniformLocation(opaqueProgram,"uColor");
 
   var accumLocation = gl.getUniformLocation(compositeProgram, "uAccumulate");
   var accumAlphaLocation = gl.getUniformLocation(
@@ -58,26 +58,46 @@ function initApp(meshes) {
     "uAccumulateAlpha"
   );
 
-
   var screenTextLoc = gl.getUniformLocation(screenProgram, "screen");
-
 
   ////////////////////////////////
   ////GUI SETUP
   //////////////////////////////////
   const gui = new dat.GUI();
-  const cubeFolder = gui.addFolder("Hair Color");
-  cubeFolder.addColor(CONFIG, "hair color").onChange(function() { 
+  const folder = gui.addFolder("Configuration");
+  folder.add(CONFIG, "draw hair");
+  folder.add(CONFIG, "front face");
+  folder.add(CONFIG, "back face");
+  folder.addColor(CONFIG, "hair color").onChange(function () {
     gl.useProgram(accumProgram);
-    gl.uniform3fv(hairColorLocation,[CONFIG["hair color"][0]/255.0,CONFIG["hair color"][1]/255.0,CONFIG["hair color"][2]/255.0])
+    gl.uniform3fv(hairColorLocation, [
+      CONFIG["hair color"][0] / 255.0,
+      CONFIG["hair color"][1] / 255.0,
+      CONFIG["hair color"][2] / 255.0,
+    ]);
     gl.useProgram(null);
   });
-  cubeFolder.open();
-  
+  folder.add(CONFIG,"hair opacity",0,1,0.05).onChange(function(){
+    gl.useProgram(accumProgram);
+    gl.uniform1f(hairOpacityLocation,CONFIG["hair opacity"]);
+    gl.useProgram(null);
+  })
+  folder.addColor(CONFIG,"skin color").onChange(function () {
+    gl.useProgram(opaqueProgram);
+    gl.uniform3fv(skinColorLocation, [
+      CONFIG["skin color"][0] / 255.0,
+      CONFIG["skin color"][1] / 255.0,
+      CONFIG["skin color"][2] / 255.0,
+    ]);
+    gl.useProgram(null);
+  });
+  folder.open();
 
   ////////////////////////////////
   //  SET UP FRAMEBUFFERS
   ////////////////////////////////
+
+  //#region framebuffers
 
   var opaqueBuffer = gl.createFramebuffer();
 
@@ -188,6 +208,8 @@ function initApp(meshes) {
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
+  //#endregion
+
   /////////////////////
   // SET UP GEOMETRY
   /////////////////////
@@ -285,7 +307,18 @@ function initApp(meshes) {
 
     gl.useProgram(accumProgram);
     gl.uniform1i(hairTextLocation, 0);
-    gl.uniform3fv(hairColorLocation,[CONFIG["hair color"][0]/255.0,CONFIG["hair color"][1]/255.0,CONFIG["hair color"][2]/255.0])
+    gl.uniform3fv(hairColorLocation, [
+      CONFIG["hair color"][0] / 255.0,
+      CONFIG["hair color"][1] / 255.0,
+      CONFIG["hair color"][2] / 255.0,
+    ]);
+    gl.uniform1f(hairOpacityLocation,CONFIG["hair opacity"])
+    gl.useProgram(opaqueProgram);
+    gl.uniform3fv(skinColorLocation, [
+      CONFIG["skin color"][0] / 255.0,
+      CONFIG["skin color"][1] / 255.0,
+      CONFIG["skin color"][2] / 255.0,
+    ]);
 
     gl.useProgram(compositeProgram);
     gl.uniform1i(accumLocation, 1);
@@ -319,8 +352,6 @@ function initApp(meshes) {
     sceneUniformData.set(lightPosition, 52);
     gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, sceneUniformBuffer);
     gl.bufferSubData(gl.UNIFORM_BUFFER, 0, sceneUniformData);
-
-    
 
     /////////////////////////////////////////////////////////////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////////////////
@@ -359,101 +390,104 @@ function initApp(meshes) {
     //TRANSPARENT PASS (BACK FACE)
     ///////////////////////////////
 
-    if (renderHair) {
-      // CONFIGURE
-      gl.enable(gl.DEPTH_TEST);
-      gl.depthMask(false);
+    if (CONFIG["draw hair"]) {
+      if (CONFIG["back face"]) {
+        // CONFIGURE
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthMask(false);
 
-      gl.enable(gl.CULL_FACE); //BACK FACE
-      gl.cullFace(gl.FRONT);
+        gl.enable(gl.CULL_FACE); //DRAW BACK FACE
+        gl.cullFace(gl.FRONT);
 
-      gl.enable(gl.BLEND);
-      gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE_MINUS_SRC_ALPHA);
+        gl.enable(gl.BLEND);
+        gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE_MINUS_SRC_ALPHA);
 
-      //CLEAR
-      gl.bindFramebuffer(gl.FRAMEBUFFER, accumBuffer);
-      gl.clear(gl.COLOR_BUFFER_BIT);
+        //CLEAR
+        gl.bindFramebuffer(gl.FRAMEBUFFER, accumBuffer);
+        gl.clear(gl.COLOR_BUFFER_BIT);
 
-      gl.useProgram(accumProgram);
-      gl.bindVertexArray(hairArray);
-      gl.drawElements(
-        gl.TRIANGLES,
-        meshes.hair.indices.length,
-        gl.UNSIGNED_SHORT,
-        0
-      );
-      gl.disable(gl.CULL_FACE);
+        gl.useProgram(accumProgram);
+        gl.bindVertexArray(hairArray);
+        gl.drawElements(
+          gl.TRIANGLES,
+          meshes.hair.indices.length,
+          gl.UNSIGNED_SHORT,
+          0
+        );
+        gl.disable(gl.CULL_FACE);
 
-      /////////////////////////////////////////////////////////////////////////////////////////////
-      ///COMPOSITION PASS (BACK FACE)
-      ///////////////////////////////
+        /////////////////////////////////////////////////////////////////////////////////////////////
+        ///COMPOSITION PASS (BACK FACE)
+        ///////////////////////////////
 
-      // CONFIGURE
-      gl.depthFunc(gl.ALWAYS);
-      gl.depthMask(false);
+        // CONFIGURE
+        gl.depthFunc(gl.ALWAYS);
+        gl.depthMask(false);
 
-      gl.enable(gl.BLEND);
-      gl.blendFunc(gl.ONE_MINUS_SRC_ALPHA, gl.SRC_ALPHA);
-      // gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-      // gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE_MINUS_SRC_ALPHA, gl.SRC_ALPHA);
+        // gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        // gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
-      gl.bindFramebuffer(gl.FRAMEBUFFER, opaqueBuffer);
-      gl.useProgram(compositeProgram);
-      gl.bindVertexArray(quadArray);
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, opaqueBuffer);
+        gl.useProgram(compositeProgram);
+        gl.bindVertexArray(quadArray);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+      }
 
       /////////////////////////////////////////////////////////////////////////////////////////////
       //TRANSPARENT PASS (FRONT FACE)
       ///////////////////////////////
 
-      // CONFIGURE
-      gl.enable(gl.DEPTH_TEST);
-      gl.depthFunc(gl.LEQUAL);
-      gl.depthMask(false);
+      if (CONFIG["front face"]) {
+        // CONFIGURE
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+        gl.depthMask(false);
 
-      gl.enable(gl.CULL_FACE); //FRONT FACE
-      gl.cullFace(gl.BACK);
+        gl.enable(gl.CULL_FACE); //DRAW FRONT FACE
+        gl.cullFace(gl.BACK);
 
-      gl.enable(gl.BLEND);
-      gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE_MINUS_SRC_ALPHA);
+        gl.enable(gl.BLEND);
+        gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE_MINUS_SRC_ALPHA);
 
-      //CLEAR
-      gl.bindFramebuffer(gl.FRAMEBUFFER, accumBuffer);
-      gl.clear(gl.COLOR_BUFFER_BIT);
+        //CLEAR
+        gl.bindFramebuffer(gl.FRAMEBUFFER, accumBuffer);
+        gl.clear(gl.COLOR_BUFFER_BIT);
 
-      gl.useProgram(accumProgram);
-      gl.bindVertexArray(hairArray);
-      gl.drawElements(
-        gl.TRIANGLES,
-        meshes.hair.indices.length,
-        gl.UNSIGNED_SHORT,
-        0
-      );
+        gl.useProgram(accumProgram);
+        gl.bindVertexArray(hairArray);
+        gl.drawElements(
+          gl.TRIANGLES,
+          meshes.hair.indices.length,
+          gl.UNSIGNED_SHORT,
+          0
+        );
 
-      /////////////////////////////////////////////////////////////////////////////////////////////
-      ///COMPOSITION PASS (FRONT FACE)
-      ///////////////////////////////
+        /////////////////////////////////////////////////////////////////////////////////////////////
+        ///COMPOSITION PASS (FRONT FACE)
+        ///////////////////////////////
 
-      // CONFIGURE
-      gl.depthFunc(gl.ALWAYS);
-      gl.depthMask(false);
+        // CONFIGURE
+        gl.depthFunc(gl.ALWAYS);
+        gl.depthMask(false);
 
-      gl.enable(gl.BLEND);
-      gl.blendFunc(gl.ONE_MINUS_SRC_ALPHA, gl.SRC_ALPHA);
-      //gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-      // gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE_MINUS_SRC_ALPHA, gl.SRC_ALPHA);
+        //gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        // gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
-      //CLEAR
-      gl.bindFramebuffer(gl.FRAMEBUFFER, opaqueBuffer);
-      gl.useProgram(compositeProgram);
-      gl.bindVertexArray(quadArray);
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
-    } else {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, accumBuffer);
-      gl.clear(gl.COLOR_BUFFER_BIT);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        //CLEAR
+        gl.bindFramebuffer(gl.FRAMEBUFFER, opaqueBuffer);
+        gl.useProgram(compositeProgram);
+        gl.bindVertexArray(quadArray);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+      } else {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, accumBuffer);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      }
     }
-
     ////////////////////////////////////////////////////////////////////////////////////////////
     // RTT
     ///////////////////////////////
@@ -462,6 +496,7 @@ function initApp(meshes) {
     gl.disable(gl.DEPTH_TEST);
     gl.depthMask(gl.TRUE);
     gl.disable(gl.BLEND);
+    // gl.enable(gl.FRAMEBUFFER_SRGB); 
 
     // Bind BackBuffer
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -471,6 +506,8 @@ function initApp(meshes) {
     gl.useProgram(screenProgram);
     gl.bindVertexArray(quadArray);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    // gl.disable(gl.FRAMEBUFFER_SRGB); 
 
     requestAnimationFrame(draw);
   }

@@ -51,6 +51,7 @@ MADE BY
           vec4 uLightPosition;
       };
       uniform vec3 uHairColor;
+      uniform float uHairOpacity;
 
       out vec3 vPosition;
       out vec2 vUV;
@@ -65,7 +66,7 @@ MADE BY
           vUV = uv;
           vNormal = mat3(transpose(inverse(uModelView))) * normal;
 
-          vColor = vec4(uHairColor,0.99);
+          vColor = vec4(uHairColor,uHairOpacity);
           //vColor = vec4(0.38*2.5,0.22*2.5,0.2*2.5,0.99); //GINGER
           //vColor = vec4(0.98,0.94,0.74,0.99); //BLONDE
 
@@ -118,6 +119,7 @@ MADE BY
 
 
       float weight(float z, float a) {
+          //
           //return clamp(pow(min(1.0, a * 10.0) + 0.01, 3.0) * 1e8 * pow(1.0 - z * 0.9, 3.0), 1e-2, 3e3);
           //float d = 1.0 - z * 0.99;
           //float d2 = d * d;
@@ -127,9 +129,16 @@ MADE BY
           //float depthWeight = d + 10.0 * d2 + 1e2 * d4 + 1e5 * d16;
           //return clamp(a * depthWeight, 0.01, 1e4);
 
+          //Maguire 2017 
+          //https://casual-effects.com/research/McGuire2017Transparency/McGuire2017Transparency.pdf
+          //float tmp = 10.0 * (1.0 - 0.99 * z) * a;
+          //tmp *= tmp * tmp;
+          //return clamp(tmp, 0.01, 30.0);
+          //Modified twitter
           float tmp = 1.0 - z * 0.99;
                 tmp *= tmp * tmp * 1e4;
                 return clamp(a * tmp, 1e-3, 3e4);
+
           //return a*max(pow(10.0,-2.0),min(3000.0,0.03/(pow(10.0,-5.0)+pow((abs(z)/200.0),4.0)))); //EQUATION 9 ORIGINAL PAPER. GOOD FOR MIDDLE DISTANCES
 
       }
@@ -138,13 +147,10 @@ MADE BY
 
           vec2 uv = vUV;
 
-          //ALPHA TEST
-          //if(texture(uTexture, uv).r<0.1)discard;
-
           //PREMULTIPLY ALPHA
           vec4 baseColor = vColor * texture(uTexture, uv);
           //vec4 baseColor = vColor;
-          vec4 color = vec4(phong(baseColor.rgb), texture(uTexture, uv).r);
+          vec4 color = vec4(phong(baseColor.rgb), texture(uTexture, uv).r*vColor.a);
 
           //???????
           //color.rgb *= color.a;
@@ -210,6 +216,7 @@ MADE BY
           vec4 uEyePosition;
           vec4 uLightPosition;
       };
+      uniform vec3 uColor;
 
       out vec3 vPosition;
       out vec2 vUV;
@@ -223,7 +230,9 @@ MADE BY
           vPosition = pos.xyz;
           vUV = uv;
           vNormal = mat3(transpose(inverse(uModelView))) * normal;
-          vColor = vec4(0.97,0.86,0.78,1.0);
+          //vColor = vec4(0.97,0.86,0.78,1.0);
+          vColor = vec4(uColor,1.0);
+
           gl_Position =  uProj* uModelView *vec4(position,1.0);
       }
     </script>
@@ -260,7 +269,7 @@ MADE BY
 
         float ambient = 0.2;
         float diffuse = max(dot(lightDirection, normal), 0.0);
-        float specular = pow(max(dot(reflectionDirection, eyeDirection), 0.0), 20.0);
+        float specular = 0.1 *pow(max(dot(reflectionDirection, eyeDirection), 0.0), 100.0);
 
         return vec3((ambient + diffuse + specular) * color.rgb);
       }
@@ -294,6 +303,12 @@ MADE BY
       void main() {
           ivec2 fragCoord = ivec2(gl_FragCoord.xy);
           fragColor = vec4(texelFetch(screen, fragCoord,0).rgb, 1.0f);
+          //Post-processing 
+          //Gamma correction
+          float gamma = 2.2;
+          fragColor.rgb = pow(fragColor.rgb, vec3(1.0/gamma));
+          
+
       }
     </script>
     
