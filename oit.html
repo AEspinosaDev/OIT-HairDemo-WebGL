@@ -52,24 +52,25 @@ MADE BY
       };
       uniform vec3 uHairColor;
       uniform float uHairOpacity;
+      uniform int uSimpleScene;
+
 
       out vec3 vPosition;
       out vec2 vUV;
       out vec3 vNormal;
       out vec3 vLightPos;
       flat out vec4 vColor;
+      flat out int isSimpleScene;
 
       void main() {
 
           vPosition = (uModelView * vec4(position,1.0)).xyz;
-          vLightPos = (uView * vec4(uLightPosition.xyz,1.0)).xyz;
+          vLightPos = (uModelView * vec4(uLightPosition.xyz,1.0)).xyz;
           vUV = uv;
           vNormal = mat3(transpose(inverse(uModelView))) * normal;
 
           vColor = vec4(uHairColor,uHairOpacity);
-          //vColor = vec4(0.38*2.5,0.22*2.5,0.2*2.5,0.99); //GINGER
-          //vColor = vec4(0.98,0.94,0.74,0.99); //BLONDE
-
+          isSimpleScene = uSimpleScene;
 
           gl_Position =  uProj* uModelView *vec4(position,1.0);
 
@@ -95,6 +96,7 @@ MADE BY
       in vec3 vNormal;
       flat in vec4 vColor;
       in vec3 vLightPos;
+      flat in int isSimpleScene;
 
 
       layout(location=0) out vec4 accumColor;
@@ -138,7 +140,7 @@ MADE BY
           float tmp = 1.0 - z * 0.99;
                 tmp *= tmp * tmp * 1e4;
                 return clamp(a * tmp, 1e-3, 3e4);
-
+//
           //return a*max(pow(10.0,-2.0),min(3000.0,0.03/(pow(10.0,-5.0)+pow((abs(z)/200.0),4.0)))); //EQUATION 9 ORIGINAL PAPER. GOOD FOR MIDDLE DISTANCES
 
       }
@@ -147,17 +149,16 @@ MADE BY
 
           vec2 uv = vUV;
 
+          //SHADE
+          vec4 color = isSimpleScene == 1 ? vec4(phong(vColor.rgb),vColor.a) : vec4(phong(vColor.rgb),texture(uTexture, uv).r*vColor.a);
+          
           //PREMULTIPLY ALPHA
-          vec4 baseColor = vColor * texture(uTexture, uv);
-          //vec4 baseColor = vColor;
-          vec4 color = vec4(phong(baseColor.rgb), texture(uTexture, uv).r*vColor.a);
+          color.rgb *= color.a;
 
-          //???????
-          //color.rgb *= color.a;
 
           float w = weight(gl_FragCoord.z, color.a);
 
-          accumColor = vec4(color.rgb *  color.a, color.a)*w;//WITH PER RENDER TARGET BLENDING
+          accumColor = vec4(color.rgb , color.a)*w;//WITH PER RENDER TARGET BLENDING
           accumColor = vec4(color.rgb * w, color.a);//WITHOUT
 
           accumAlpha = color.a;//WITH PER RENDER TARGET BLENDING
@@ -226,7 +227,7 @@ MADE BY
 
       void main() {
           vec4 pos = uModelView * vec4(position,1.0);
-          vLightPos = (uView * vec4(uLightPosition.xyz,1.0)).xyz;
+          vLightPos = (uModelView * vec4(uLightPosition.xyz,1.0)).xyz;
           vPosition = pos.xyz;
           vUV = uv;
           vNormal = mat3(transpose(inverse(uModelView))) * normal;

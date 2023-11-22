@@ -27,6 +27,7 @@
     http://jcgt.org/published/0002/02/09/
 -->
 <html>
+
 <head>
     <style>
         html {
@@ -38,6 +39,7 @@
         }
     </style>
 </head>
+
 <body>
     <canvas id="gl-canvas"></canvas>
     <script type="x-shader/vs" id="vertex-accum">
@@ -189,13 +191,13 @@
         var Z_DELTA = 0.01;
 
         var QUAD_COLORS = [
-            [1.0,1.0,0.8],
-            [0.38,0.22,0.2],
-            [0.9,0.22,0.2],
-            [0.5,0.22,0.2],
-            [0.5,0.22,0.2],
-            [0.38,0.22,0.2],
-            [0.38,0.22,0.2]
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1],
+            [1, 1, 0],
+            [0, 1, 1],
+            [1, 0, 1],
+            [1, 1, 1]
         ];
         QUAD_ALPHA = 0.99;
 
@@ -233,9 +235,9 @@
         // ACCUMULATION PROGRAM
         /////////////////////////
 
-        var accumVsSource =  document.getElementById("vertex-accum").text.trim();
-        var accumFsSource =  document.getElementById("fragment-accum").text.trim();
-        
+        var accumVsSource = document.getElementById("vertex-accum").text.trim();
+        var accumFsSource = document.getElementById("fragment-accum").text.trim();
+
         var accumVertexShader = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(accumVertexShader, accumVsSource);
         gl.compileShader(accumVertexShader);
@@ -265,7 +267,7 @@
         // DRAW PROGRAM
         /////////////////////
 
-        var quadVsSource =  document.getElementById("vertex-quad").text.trim();
+        var quadVsSource = document.getElementById("vertex-quad").text.trim();
         var drawFsSource = document.getElementById("fragment-draw").text.trim();
 
         var drawVertexShader = gl.createShader(gl.VERTEX_SHADER);
@@ -402,7 +404,7 @@
 
         gl.bindVertexArray(quadArray);
 
-        
+
         gl.enable(gl.BLEND);
         gl.depthMask(false);
 
@@ -431,7 +433,7 @@
             gl.clearColor(0.75, 0.75, 0.75, 1.0);
             gl.clear(gl.COLOR_BUFFER_BIT);
             gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-            gl.drawArrays(gl.TRIANGLES, 0, 6);                
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
 
             // requestAnimationFrame(draw);
         }
@@ -469,29 +471,29 @@
                 a30 = a[12], a31 = a[13], a32 = a[14], a33 = a[15];
 
             // Cache only the current line of the second matrix
-            var b0  = b[0], b1 = b[1], b2 = b[2], b3 = b[3];
-            out[0] = b0*a00 + b1*a10 + b2*a20 + b3*a30;
-            out[1] = b0*a01 + b1*a11 + b2*a21 + b3*a31;
-            out[2] = b0*a02 + b1*a12 + b2*a22 + b3*a32;
-            out[3] = b0*a03 + b1*a13 + b2*a23 + b3*a33;
+            var b0 = b[0], b1 = b[1], b2 = b[2], b3 = b[3];
+            out[0] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30;
+            out[1] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31;
+            out[2] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32;
+            out[3] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33;
 
             b0 = b[4]; b1 = b[5]; b2 = b[6]; b3 = b[7];
-            out[4] = b0*a00 + b1*a10 + b2*a20 + b3*a30;
-            out[5] = b0*a01 + b1*a11 + b2*a21 + b3*a31;
-            out[6] = b0*a02 + b1*a12 + b2*a22 + b3*a32;
-            out[7] = b0*a03 + b1*a13 + b2*a23 + b3*a33;
+            out[4] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30;
+            out[5] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31;
+            out[6] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32;
+            out[7] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33;
 
             b0 = b[8]; b1 = b[9]; b2 = b[10]; b3 = b[11];
-            out[8] = b0*a00 + b1*a10 + b2*a20 + b3*a30;
-            out[9] = b0*a01 + b1*a11 + b2*a21 + b3*a31;
-            out[10] = b0*a02 + b1*a12 + b2*a22 + b3*a32;
-            out[11] = b0*a03 + b1*a13 + b2*a23 + b3*a33;
+            out[8] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30;
+            out[9] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31;
+            out[10] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32;
+            out[11] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33;
 
             b0 = b[12]; b1 = b[13]; b2 = b[14]; b3 = b[15];
-            out[12] = b0*a00 + b1*a10 + b2*a20 + b3*a30;
-            out[13] = b0*a01 + b1*a11 + b2*a21 + b3*a31;
-            out[14] = b0*a02 + b1*a12 + b2*a22 + b3*a32;
-            out[15] = b0*a03 + b1*a13 + b2*a23 + b3*a33;
+            out[12] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30;
+            out[13] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31;
+            out[14] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32;
+            out[15] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33;
             return out;
         };
 
@@ -568,6 +570,11 @@
         };
 
     </script>
-    <a href="https://github.com/tsherif/webgl2examples" id="github-ribbon"><img style="position: absolute; top: 0; right: 0; border: 0;" src="https://camo.githubusercontent.com/365986a132ccd6a44c23a9169022c0b5c890c387/68747470733a2f2f73332e616d617a6f6e6177732e636f6d2f6769746875622f726962626f6e732f666f726b6d655f72696768745f7265645f6161303030302e706e67" alt="Fork me on GitHub" data-canonical-src="https://s3.amazonaws.com/github/ribbons/forkme_right_red_aa0000.png"></a>
+    <a href="https://github.com/tsherif/webgl2examples" id="github-ribbon"><img
+            style="position: absolute; top: 0; right: 0; border: 0;"
+            src="https://camo.githubusercontent.com/365986a132ccd6a44c23a9169022c0b5c890c387/68747470733a2f2f73332e616d617a6f6e6177732e636f6d2f6769746875622f726962626f6e732f666f726b6d655f72696768745f7265645f6161303030302e706e67"
+            alt="Fork me on GitHub"
+            data-canonical-src="https://s3.amazonaws.com/github/ribbons/forkme_right_red_aa0000.png"></a>
 </body>
+
 </html>
