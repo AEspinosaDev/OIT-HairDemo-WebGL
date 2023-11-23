@@ -34,6 +34,16 @@ export function createVertexBuffer(mesh){
     );
     gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(2);
+
+    var tangentBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, tangentBuffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array(mesh.tangents),
+      gl.STATIC_DRAW
+    );
+    gl.vertexAttribPointer(3, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(3);
   
     var indices = gl.createBuffer();
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indices);
@@ -47,7 +57,7 @@ export function createVertexBuffer(mesh){
 
 }
 
-export function createVertexBufferFree(positions,normals,uv,idx,mode3D = true){
+export function createVertexBufferFree(positions,normals,tangents,uv,idx,mode3D = true){
 
     var gl = document.getElementById("gl-canvas").getContext("webgl2");
 
@@ -89,6 +99,17 @@ export function createVertexBufferFree(positions,normals,uv,idx,mode3D = true){
     );
     gl.vertexAttribPointer(2, mode3D? 3:2, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(2);
+    }
+    if(tangents){
+      var tangentBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, tangentBuffer);
+      gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Float32Array(tangents),
+        gl.STATIC_DRAW
+      );
+      gl.vertexAttribPointer(3, mode3D? 3:2, gl.FLOAT, false, 0, 0);
+      gl.enableVertexAttribArray(3);
     }
   
     if(idx){

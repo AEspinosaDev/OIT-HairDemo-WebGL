@@ -31,3 +31,25 @@ export function createProgram(vert, frag) {
 
   return program;
 }
+
+export function setInt(program, value, name) {
+  var gl = document.getElementById("gl-canvas").getContext("webgl2");
+  var location = gl.getUniformLocation(program, name);
+  gl.useProgram(program);
+  gl.uniform1i(location,value);
+  gl.useProgram(null);
+}
+export function setFLoat(program, value, name) {
+  var gl = document.getElementById("gl-canvas").getContext("webgl2");
+  var location = gl.getUniformLocation(program, name);
+  gl.useProgram(program);
+  gl.uniform1f(location,value);
+  gl.useProgram(null);
+}
+export function setVector3(program, value, name) {
+  var gl = document.getElementById("gl-canvas").getContext("webgl2");
+  var location = gl.getUniformLocation(program, name);
+  gl.useProgram(program);
+  gl.uniform3fv(location,value);
+  gl.useProgram(null);
+}

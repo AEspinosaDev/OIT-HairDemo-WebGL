@@ -1,4 +1,9 @@
-import { createProgram } from "./modules/program.js";
+import {
+  createProgram,
+  setFLoat,
+  setInt,
+  setVector3,
+} from "./modules/program.js";
 import {
   createVertexBuffer,
   createVertexBufferFree,
@@ -20,6 +25,8 @@ var useInput = true;
 function initApp(meshes) {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
+
+  meshes.hair.calculateTangentsAndBitangents();
 
   var gl = canvas.getContext("webgl2", { antialias: false });
 
@@ -47,21 +54,6 @@ function initApp(meshes) {
   // SCREEN PROGRAM
   var screenProgram = createProgram("vertex-quad", "screen-draw");
 
-  // GET UNIFORM LOCATIONS
-  var hairTextLocation = gl.getUniformLocation(accumProgram, "uTexture");
-  var hairColorLocation = gl.getUniformLocation(accumProgram, "uHairColor");
-  var hairOpacityLocation = gl.getUniformLocation(accumProgram, "uHairOpacity");
-  var simpleLocation = gl.getUniformLocation(accumProgram, "uSimpleScene");
-  var skinColorLocation = gl.getUniformLocation(opaqueProgram, "uColor");
-
-  var accumLocation = gl.getUniformLocation(compositeProgram, "uAccumulate");
-  var accumAlphaLocation = gl.getUniformLocation(
-    compositeProgram,
-    "uAccumulateAlpha"
-  );
-
-  var screenTextLoc = gl.getUniformLocation(screenProgram, "screen");
-
   ////////////////////////////////
   ////GUI SETUP
   //////////////////////////////////
@@ -74,47 +66,64 @@ function initApp(meshes) {
   folder.add(CONFIG, "front face");
   folder.add(CONFIG, "back face");
   folder.addColor(CONFIG, "hair color").onChange(function () {
-    gl.useProgram(accumProgram);
-    gl.uniform3fv(hairColorLocation, [
-      CONFIG["hair color"][0] / 255.0,
-      CONFIG["hair color"][1] / 255.0,
-      CONFIG["hair color"][2] / 255.0,
-    ]);
-    gl.useProgram(null);
+    setVector3(
+      accumProgram,
+      [
+        CONFIG["hair color"][0] / 255.0,
+        CONFIG["hair color"][1] / 255.0,
+        CONFIG["hair color"][2] / 255.0,
+      ],
+      "uHairColor"
+    );
   });
-  folder.add(CONFIG, "hair opacity", 0, 1, 0.05).onChange(function () {
-    gl.useProgram(accumProgram);
-    gl.uniform1f(hairOpacityLocation, CONFIG["hair opacity"]);
-    gl.useProgram(null);
-  });
+  
   folder.addColor(CONFIG, "skin color").onChange(function () {
-    gl.useProgram(opaqueProgram);
-    gl.uniform3fv(skinColorLocation, [
-      CONFIG["skin color"][0] / 255.0,
-      CONFIG["skin color"][1] / 255.0,
-      CONFIG["skin color"][2] / 255.0,
-    ]);
-    gl.useProgram(null);
+    setVector3(
+      opaqueProgram,
+      [
+        CONFIG["skin color"][0] / 255.0,
+        CONFIG["skin color"][1] / 255.0,
+        CONFIG["skin color"][2] / 255.0,
+      ],
+      "uColor"
+    );
   });
   folder.add(CONFIG, "light position x", -20, 20, 1);
   folder.add(CONFIG, "light position y", -20, 20, 1);
   folder.add(CONFIG, "light position z", -20, 20, 1);
-
-  folder.add(CONFIG, "draw simple scene").onChange(function () {
-    gl.useProgram(opaqueProgram);
-    gl.uniform3fv(skinColorLocation, [
-      CONFIG["skin color"][0] / 255.0,
-      CONFIG["skin color"][1] / 255.0,
-      CONFIG["skin color"][2] / 255.0,
-    ]);
-    gl.useProgram(accumProgram);
-    gl.uniform3fv(hairColorLocation, [
-      CONFIG["hair color"][0] / 255.0,
-      CONFIG["hair color"][1] / 255.0,
-      CONFIG["hair color"][2] / 255.0,
-    ]);
-    gl.uniform1i(simpleLocation, CONFIG["draw simple scene"]);
-    gl.useProgram(null);
+  const t_folder = folder.addFolder("Transparency")
+  t_folder.open()
+  t_folder.add(CONFIG, "hair opacity", 0, 1, 0.05).onChange(function () {
+    setFLoat(accumProgram, CONFIG["hair opacity"], "uHairOpacity");
+  });
+  t_folder.add(CONFIG, "weighted").onChange(function () {
+    setInt(accumProgram, CONFIG["weighted"], "uWeighted");
+  });
+  t_folder.add(CONFIG, "weight func",CONFIG["weight func"]).onChange(function(value){
+    setInt(accumProgram,value,"uWeightFunc")
+  });
+  const extra_folder = folder.addFolder("Extra")
+  extra_folder.open()
+  extra_folder.add(CONFIG, "simple scene").onChange(function () {
+    setVector3(
+      accumProgram,
+      [
+        CONFIG["hair color"][0] / 255.0,
+        CONFIG["hair color"][1] / 255.0,
+        CONFIG["hair color"][2] / 255.0,
+      ],
+      "uHairColor"
+    );
+    setVector3(
+      opaqueProgram,
+      [
+        CONFIG["skin color"][0] / 255.0,
+        CONFIG["skin color"][1] / 255.0,
+        CONFIG["skin color"][2] / 255.0,
+      ],
+      "uColor"
+    );
+    setInt(accumProgram, CONFIG["simple scene"], "uSimpleScene");
   });
   folder.open();
   //#endregion
@@ -250,9 +259,11 @@ function initApp(meshes) {
     [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
     null,
     null,
+    null,
     true
   );
 
+  console.log(meshes.hair);
   //////////////////////
   // SET UP UNIFORMS
   //////////////////////
@@ -327,27 +338,34 @@ function initApp(meshes) {
     gl.activeTexture(gl.TEXTURE3);
     gl.bindTexture(gl.TEXTURE_2D, op_colorTarget);
     gl.useProgram(screenProgram);
-    gl.uniform1i(screenTextLoc, 3);
 
-    gl.useProgram(accumProgram);
-    gl.uniform1i(hairTextLocation, 0);
-    gl.uniform3fv(hairColorLocation, [
-      CONFIG["hair color"][0] / 255.0,
-      CONFIG["hair color"][1] / 255.0,
-      CONFIG["hair color"][2] / 255.0,
-    ]);
+    setInt(screenProgram, 3, "screen");
+    setInt(accumProgram, 0, "uTexture");
+    setVector3(
+      accumProgram,
+      [
+        CONFIG["hair color"][0] / 255.0,
+        CONFIG["hair color"][1] / 255.0,
+        CONFIG["hair color"][2] / 255.0,
+      ],
+      "uHairColor"
+    );
+    setVector3(
+      opaqueProgram,
+      [
+        CONFIG["skin color"][0] / 255.0,
+        CONFIG["skin color"][1] / 255.0,
+        CONFIG["skin color"][2] / 255.0,
+      ],
+      "uColor"
+    );
+    setFLoat(accumProgram, CONFIG["hair opacity"], "uHairOpacity");
+    setInt(accumProgram,2,"uWeightFunc");
+    setInt(accumProgram,1,"uWeighted");
 
-    gl.uniform1f(hairOpacityLocation, CONFIG["hair opacity"]);
-    gl.useProgram(opaqueProgram);
-    gl.uniform3fv(skinColorLocation, [
-      CONFIG["skin color"][0] / 255.0,
-      CONFIG["skin color"][1] / 255.0,
-      CONFIG["skin color"][2] / 255.0,
-    ]);
 
-    gl.useProgram(compositeProgram);
-    gl.uniform1i(accumLocation, 1);
-    gl.uniform1i(accumAlphaLocation, 2);
+    setInt(compositeProgram, 1, "uAccumulate");
+    setInt(compositeProgram, 2, "uAccumulateAlpha");
 
     requestAnimationFrame(draw);
   };
@@ -391,7 +409,7 @@ function initApp(meshes) {
     //  █▄▀ █▀▄ █▀█ ▀▄▀▄▀      █▄▄ █▄█ █▀▄ ██▄
     /////////////////////////////////////////////////////////////////////////////////////////////
 
-    if (!CONFIG["draw simple scene"]) {
+    if (!CONFIG["simple scene"]) {
       /////////////////////////////////////////////////////////////////////////////////////////////
       //OPAQUE PASS
       ///////////////////////////////
@@ -557,8 +575,6 @@ function initApp(meshes) {
           CONFIG["light position z"],
         ],
         screenProgram,
-        skinColorLocation,
-        hairColorLocation,
         drag_angles
       );
     }

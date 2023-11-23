@@ -7,7 +7,7 @@ WebGL Order Independent Tansparency Technique tailored for hair cards
 
 No need for npm install, project needs a few very light packages and it's all already included for the sacke of simplicity.
 
-Shading is bad, this project only focus in on transparencies for now. Might add a modified Kajiya's shading in the future just for a good visual ref.
+Shading is bad, this project only focus in on transparencies for now. It implements a simplified Scheuermann technique.
 
 ![image](https://github.com/AEspinosaDev/OIT-HairDemo-WebGL/assets/79087129/0a477fdf-c87c-411b-a3c9-bf00598a8068)
 

@@ -41,6 +41,8 @@ MADE BY
       layout(location=0) in vec3 position;
       layout(location=1) in vec2 uv;
       layout(location=2) in vec3 normal;
+      layout(location=3) in vec3 tangent;
+
 
       layout(std140, column_major) uniform;
       uniform SceneUniforms {
@@ -53,11 +55,13 @@ MADE BY
       uniform vec3 uHairColor;
       uniform float uHairOpacity;
       uniform int uSimpleScene;
+      
 
 
       out vec3 vPosition;
       out vec2 vUV;
       out vec3 vNormal;
+      out vec3 vTangent;
       out vec3 vLightPos;
       flat out vec4 vColor;
       flat out int isSimpleScene;
@@ -68,6 +72,9 @@ MADE BY
           vLightPos = (uModelView * vec4(uLightPosition.xyz,1.0)).xyz;
           vUV = uv;
           vNormal = mat3(transpose(inverse(uModelView))) * normal;
+          vec3 _tangent = normalize(vec3(uModelView*vec4(tangent,0.0)));
+          vec3 _normal = normalize(vec3(uModelView*vec4(normal,0.0)));
+          vTangent= cross(_normal,_tangent);
 
           vColor = vec4(uHairColor,uHairOpacity);
           isSimpleScene = uSimpleScene;
@@ -77,94 +84,153 @@ MADE BY
       }
     </script>
     <script type="x-shader/x-fragment" id="fragment-accum">
-      #version 300 es
-      precision highp float;
+            #version 300 es
+            precision highp float;
 
-      layout(std140, column_major) uniform;
-      uniform SceneUniforms {
-          mat4 uProj;
-          mat4 uView;
-          mat4 uModelView;
-          vec4 uEyePosition;
-          vec4 uLightPosition;
-      };
+            layout(std140, column_major) uniform;
+            uniform SceneUniforms {
+                mat4 uProj;
+                mat4 uView;
+                mat4 uModelView;
+                vec4 uEyePosition;
+                vec4 uLightPosition;
+            };
 
-      uniform sampler2D uTexture;
+            uniform sampler2D uTexture;
+            uniform int uWeighted;
+            uniform int uWeightFunc;
 
-      in vec3 vPosition;
-      in vec2 vUV;
-      in vec3 vNormal;
-      flat in vec4 vColor;
-      in vec3 vLightPos;
-      flat in int isSimpleScene;
-
-
-      layout(location=0) out vec4 accumColor;
-      layout(location=1) out float accumAlpha;
-
-
-      vec3 phong(vec3 color){
-        vec3 position = vPosition.xyz;
-        vec3 normal = normalize(vNormal.xyz);
-
-        vec3 eyeDirection = normalize(uEyePosition.xyz - position);
-        vec3 lightVec = vLightPos.xyz - position;
-        vec3 lightDirection = normalize(lightVec);
-        vec3 reflectionDirection = reflect(-lightDirection, normal);
-
-        float ambient = 0.2;
-        float diffuse = max(dot(lightDirection, normal), 0.0);
-        float specular = pow(max(dot(reflectionDirection, eyeDirection), 0.0), 20.0);
-
-        return vec3((ambient + diffuse + specular) * color.rgb);
-      }
+            in vec3 vPosition;
+            in vec2 vUV;
+            in vec3 vNormal;
+            in vec3 vTangent;
+            flat in vec4 vColor;
+            in vec3 vLightPos;
+            flat in int isSimpleScene;
 
 
-      float weight(float z, float a) {
-          //
-          //return clamp(pow(min(1.0, a * 10.0) + 0.01, 3.0) * 1e8 * pow(1.0 - z * 0.9, 3.0), 1e-2, 3e3);
-          //float d = 1.0 - z * 0.99;
-          //float d2 = d * d;
-          //float d4 = d2 * d2;
-          //float d8 = d4 * d4;
-          //float d16 = d8 * d8;
-          //float depthWeight = d + 10.0 * d2 + 1e2 * d4 + 1e5 * d16;
-          //return clamp(a * depthWeight, 0.01, 1e4);
-
-          //Maguire 2017 
-          //https://casual-effects.com/research/McGuire2017Transparency/McGuire2017Transparency.pdf
-          //float tmp = 10.0 * (1.0 - 0.99 * z) * a;
-          //tmp *= tmp * tmp;
-          //return clamp(tmp, 0.01, 30.0);
-          //Modified twitter
-          float tmp = 1.0 - z * 0.99;
-                tmp *= tmp * tmp * 1e4;
-                return clamp(a * tmp, 1e-3, 3e4);
-//
-          //return a*max(pow(10.0,-2.0),min(3000.0,0.03/(pow(10.0,-5.0)+pow((abs(z)/200.0),4.0)))); //EQUATION 9 ORIGINAL PAPER. GOOD FOR MIDDLE DISTANCES
-
-      }
-
-      void main() {
-
-          vec2 uv = vUV;
-
-          //SHADE
-          vec4 color = isSimpleScene == 1 ? vec4(phong(vColor.rgb),vColor.a) : vec4(phong(vColor.rgb),texture(uTexture, uv).r*vColor.a);
-          
-          //PREMULTIPLY ALPHA
-          color.rgb *= color.a;
+            layout(location=0) out vec4 accumColor;
+            layout(location=1) out float accumAlpha;
 
 
-          float w = weight(gl_FragCoord.z, color.a);
+            vec3 shiftTangent(vec3 T, vec3 N, float shift){
 
-          accumColor = vec4(color.rgb , color.a)*w;//WITH PER RENDER TARGET BLENDING
-          accumColor = vec4(color.rgb * w, color.a);//WITHOUT
+              vec3 shiftedT = T+shift*N;
+              return normalize(shiftedT);
+            }
+            float strandSpecular(vec3 T, vec3 V, vec3 L, float exponent){
+              vec3 H = normalize(L + V);
+              float u =dot(T,L); //Lambertian
+              float t =dot(T,V);
+              float dotTH =dot(T,H); //Spec
+              float sinTH = sin(acos(dotTH));
 
-          accumAlpha = color.a;//WITH PER RENDER TARGET BLENDING
-          accumAlpha = color.a * w;//WITHOUT
+              float dirAtten = smoothstep(-1.0, 0.0,
+                dotTH);
 
-      }
+              //return pow(u*t+sin(acos(u))*sin(acos(t)),exponent);
+              return dirAtten * pow(sinTH, exponent);
+            }
+
+            vec3 computeScheuermannLighting(){
+
+              vec3 position = vPosition.xyz;
+              vec3 tangent = normalize(vTangent);
+              vec3 normal = normalize(vNormal.xyz);
+              vec3 lightDir = normalize(vLightPos.xyz - position);
+              vec3 viewDir = normalize(-position);
+
+              vec3 Ks = vColor.rgb;
+              vec3 Kd = vColor.rgb;
+              //vec3 Ka = uHasColorText ? texture(uColorText,_uv).rgb : uColor;
+              //float shift = uHasTiltText ? texture(uTiltText,_uv).r : 0.0;
+
+              vec3 t1 = shiftTangent(tangent, normal, -0.5);
+              //vec3 t2 = shiftTangent(tangent, normal, uTilt2 + shift);
+
+              vec3  ambient = Kd*0.2;
+              vec3 diffuse = Kd*clamp(dot(normal,lightDir),0.0,1.0);
+              vec3 specular = clamp(Ks * strandSpecular(t1, viewDir,lightDir, 120.0),0.0,1.0);
+
+              //float highlight = uHasHighlightText ? texture(uHighlightText,_uv).r:1.0;
+              //specular += clamp(Ks*highlight* strandSpecular(t2,V,L,uSpecularPower2),0.0,1.0);
+
+              return ambient+diffuse+clamp(dot(normal,lightDir)*specular,0.0,1.0);
+
+            }
+
+
+
+            vec3 phong(vec3 color){
+              vec3 position = vPosition.xyz;
+              vec3 normal = normalize(vNormal.xyz);
+
+              vec3 eyeDirection = normalize(uEyePosition.xyz - position);
+              vec3 lightVec = vLightPos.xyz - position;
+              vec3 lightDirection = normalize(lightVec);
+              vec3 reflectionDirection = reflect(-lightDirection, normal);
+
+              float ambient = 0.2;
+              float diffuse = max(dot(lightDirection, normal), 0.0);
+              float specular = pow(max(dot(reflectionDirection, eyeDirection), 0.0), 20.0);
+
+              return vec3((ambient + diffuse + specular) * color.rgb);
+            }
+
+
+            float weight(float z, float a) {
+                if(uWeightFunc==0){
+                  //Maguire 2017
+                  //https://casual-effects.com/research/McGuire2017Transparency/McGuire2017Transparency.pdf
+                  float tmp = 10.0 * (1.0 - 0.99 * z) * a;
+                  tmp *= tmp * tmp;
+                  return clamp(tmp, 0.01, 30.0);
+                }
+                if(uWeightFunc==1){
+                   //EQUATION 9 ORIGINAL PAPER. GOOD FOR MIDDLE DISTANCES
+                  return a*max(pow(10.0,-2.0),min(3000.0,0.03/(pow(10.0,-5.0)+pow((abs(z)/200.0),4.0))));
+                }
+                if(uWeightFunc==2){
+                  //Modified twitter
+                  float tmp = 1.0 - z * 0.99;
+                  tmp *= tmp * tmp * 1e4;
+                  return clamp(a * tmp, 1e-3, 3e4);
+                }
+                if(uWeightFunc==3){
+                  //Tarek Serif 2017
+                  float d = 1.0 - z * 0.99;
+                  float d2 = d * d;
+                  float d4 = d2 * d2;
+                  float d8 = d4 * d4;
+                  float d16 = d8 * d8;
+                  float depthWeight = d + 10.0 * d2 + 1e2 * d4 + 1e5 * d16;
+                  return clamp(a * depthWeight, 0.01, 1e4);
+                }
+                if(uWeightFunc==4){
+                  //Learn OpenGl
+                  return clamp(pow(min(1.0, a * 10.0) + 0.01, 3.0) * 1e8 * pow(1.0 - z * 0.9, 3.0), 1e-2, 3e3);
+                }
+            }
+
+            void main() {
+
+                vec2 uv = vUV;
+
+                //SHADE
+                vec4 color = isSimpleScene == 1 ? vec4(phong(vColor.rgb),vColor.a) : vec4(computeScheuermannLighting(),texture(uTexture, uv).r*vColor.a);
+
+                //PREMULTIPLY ALPHA
+                color.rgb *= color.a;
+
+                float w = uWeighted == 1 ? weight(gl_FragCoord.z, color.a): 1.0;
+
+                //accumColor = vec4(color.rgb , color.a)*w;//WITH PER RENDER TARGET BLENDING
+                accumColor = vec4(color.rgb * w, color.a);//WITHOUT
+
+               //accumAlpha = color.a;//WITH PER RENDER TARGET BLENDING
+                accumAlpha = color.a * w;//WITHOUT
+
+            }
     </script>
 
     <!--
@@ -270,7 +336,7 @@ MADE BY
 
         float ambient = 0.2;
         float diffuse = max(dot(lightDirection, normal), 0.0);
-        float specular = 0.1 *pow(max(dot(reflectionDirection, eyeDirection), 0.0), 100.0);
+        float specular = 0.1 *pow(max(dot(reflectionDirection, eyeDirection), 0.0), 180.0);
 
         return vec3((ambient + diffuse + specular) * color.rgb);
       }
@@ -304,15 +370,14 @@ MADE BY
       void main() {
           ivec2 fragCoord = ivec2(gl_FragCoord.xy);
           fragColor = vec4(texelFetch(screen, fragCoord,0).rgb, 1.0f);
-          //Post-processing 
+          //Post-processing
           //Gamma correction
           float gamma = 2.2;
           fragColor.rgb = pow(fragColor.rgb, vec3(1.0/gamma));
-          
+
 
       }
     </script>
-    
 
     <script type="module" src="main.js"></script>
   </body>

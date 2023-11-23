@@ -13,5 +13,8 @@ export const CONFIG={
     "light position y": 0,
     "light position z": 7,
 
-    "draw simple scene": false
+    "weighted": true,
+    "weight func": { Maguire2017: 0, OriginalPaper_Eq9: 1, Twitter: 2, TarekSherif: 3, LearnOpengGL:4, },
+
+    "simple scene": false
   }
