@@ -44,6 +44,9 @@ function initApp(meshes) {
     document.body.innerHTML =
       "This example requires EXT_color_buffer_float which is unavailable on this system.";
   }
+  //DEEP PROGRAM
+  var deepProgram = createProgram("unlit-vert", "empty");
+  //OPACITY PROGRAM
 
   // ACCUMULATION PROGRAM
   var accumProgram = createProgram("vertex-accum", "fragment-accum");
@@ -76,7 +79,7 @@ function initApp(meshes) {
       "uHairColor"
     );
   });
-  
+
   folder.addColor(CONFIG, "skin color").onChange(function () {
     setVector3(
       opaqueProgram,
@@ -91,19 +94,31 @@ function initApp(meshes) {
   folder.add(CONFIG, "light position x", -20, 20, 1);
   folder.add(CONFIG, "light position y", -20, 20, 1);
   folder.add(CONFIG, "light position z", -20, 20, 1);
-  const t_folder = folder.addFolder("Transparency")
-  t_folder.open()
+  folder.add(CONFIG, "show depth map").onChange(function (value) {
+    gl.activeTexture(gl.TEXTURE3);
+    if (!value) {
+      gl.bindTexture(gl.TEXTURE_2D, op_colorTarget);
+      setInt(screenProgram, 0, "uIsColor");
+    } else {
+      setInt(screenProgram, 1, "uIsColor");
+      gl.bindTexture(gl.TEXTURE_2D, lightDepthTarget);
+    }
+  });
+  const t_folder = folder.addFolder("Transparency");
+  t_folder.open();
   t_folder.add(CONFIG, "hair opacity", 0, 1, 0.05).onChange(function () {
     setFLoat(accumProgram, CONFIG["hair opacity"], "uHairOpacity");
   });
   t_folder.add(CONFIG, "weighted").onChange(function () {
     setInt(accumProgram, CONFIG["weighted"], "uWeighted");
   });
-  t_folder.add(CONFIG, "weight func",CONFIG["weight func"]).onChange(function(value){
-    setInt(accumProgram,value,"uWeightFunc")
-  });
-  const extra_folder = folder.addFolder("Extra")
-  extra_folder.open()
+  t_folder
+    .add(CONFIG, "weight func", CONFIG["weight func"])
+    .onChange(function (value) {
+      setInt(accumProgram, value, "uWeightFunc");
+    });
+  const extra_folder = folder.addFolder("Extra");
+  extra_folder.open();
   extra_folder.add(CONFIG, "simple scene").onChange(function () {
     setVector3(
       accumProgram,
@@ -125,6 +140,7 @@ function initApp(meshes) {
     );
     setInt(accumProgram, CONFIG["simple scene"], "uSimpleScene");
   });
+  extra_folder.add(CONFIG, "quads delta", 0, 10, 0.5);
   folder.open();
   //#endregion
 
@@ -245,6 +261,35 @@ function initApp(meshes) {
 
   //#endregion
 
+  //#region deepOpfbos
+  var deepBuffer = gl.createFramebuffer();
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, deepBuffer);
+
+  var lightDepthTarget = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, lightDepthTarget);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texStorage2D(
+    gl.TEXTURE_2D,
+    1,
+    gl.DEPTH_COMPONENT16,
+    gl.drawingBufferWidth,
+    gl.drawingBufferHeight
+  );
+  gl.framebufferTexture2D(
+    gl.FRAMEBUFFER,
+    gl.DEPTH_ATTACHMENT,
+    gl.TEXTURE_2D,
+    lightDepthTarget,
+    0
+  );
+
+  //#endregion
+
   /////////////////////
   // SET UP GEOMETRY
   /////////////////////
@@ -360,9 +405,8 @@ function initApp(meshes) {
       "uColor"
     );
     setFLoat(accumProgram, CONFIG["hair opacity"], "uHairOpacity");
-    setInt(accumProgram,2,"uWeightFunc");
-    setInt(accumProgram,1,"uWeighted");
-
+    setInt(accumProgram, 2, "uWeightFunc");
+    setInt(accumProgram, 1, "uWeighted");
 
     setInt(compositeProgram, 1, "uAccumulate");
     setInt(compositeProgram, 2, "uAccumulateAlpha");
@@ -384,12 +428,28 @@ function initApp(meshes) {
     mat4.rotateY(model, model, 0);
     mat4.rotateZ(model, model, drag_angles[1]);
     mat4.scale(model, model, vec3.fromValues(scale, scale, scale));
-    mat4.multiply(modelView, cam.viewMatrix, model);
+    /////////////////////////////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////////////
+    //  █▀▄ █▀█ ▄▀█ █░█░█      █▀▀ █▀█ █▀█ █▀▀
+    //  █▄▀ █▀▄ █▀█ ▀▄▀▄▀      █▄▄ █▄█ █▀▄ ██▄
+    /////////////////////////////////////////////////////////////////////////////////////////////
 
     //Update uniforms
+    var lightView = mat4.create();
+    mat4.lookAt(
+      lightView,
+      vec3.fromValues(
+        CONFIG["light position x"],
+        CONFIG["light position y"],
+        CONFIG["light position z"]
+      ),
+      vec3.fromValues(0, 0.5, 0),
+      vec3.fromValues(0, 1, 0)
+    );
+    mat4.multiply(modelView, lightView, model);
     var sceneUniformData = new Float32Array(56);
     sceneUniformData.set(cam.projMatrix);
-    sceneUniformData.set(cam.viewMatrix, 16);
+    sceneUniformData.set(lightView, 16);
     sceneUniformData.set(modelView, 32);
     sceneUniformData.set(cam.position, 48);
     sceneUniformData.set(
@@ -402,14 +462,56 @@ function initApp(meshes) {
     );
     gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, sceneUniformBuffer);
     gl.bufferSubData(gl.UNIFORM_BUFFER, 0, sceneUniformData);
+    /////////////////////////////////////////////////////////////////////////////////////////////
+    //DEEP PASS
+    ///////////////////////////////
+    // CONFIGURE
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthMask(true);
+    gl.depthFunc(gl.LESS);
+    gl.disable(gl.CULL_FACE);
+    gl.clearColor(0.0, 0.0, 0.0, 1.0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, deepBuffer);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
+    //DRAW
+    gl.useProgram(deepProgram);
+    gl.bindVertexArray(hairArray);
+    gl.drawElements(
+      gl.TRIANGLES,
+      meshes.hair.indices.length,
+      gl.UNSIGNED_SHORT,
+      0
+    );
     /////////////////////////////////////////////////////////////////////////////////////////////
-    /////////////////////////////////////////////////////////////////////////////////////////////
-    //  █▀▄ █▀█ ▄▀█ █░█░█      █▀▀ █▀█ █▀█ █▀▀
-    //  █▄▀ █▀▄ █▀█ ▀▄▀▄▀      █▄▄ █▄█ █▀▄ ██▄
-    /////////////////////////////////////////////////////////////////////////////////////////////
+    //OPACITY PASS
+    ///////////////////////////////
+
+    //Save opacity textures
+
+    //In the hair shading part (accumulation), find the layer, lookup the texture opacity and reduce illumination color
+    //So in order for that we have to look again for the depth texture and a lot of opacity textures
+
+
 
     if (!CONFIG["simple scene"]) {
+      mat4.multiply(modelView, cam.viewMatrix, model);
+      sceneUniformData = new Float32Array(56);
+      sceneUniformData.set(cam.projMatrix);
+      sceneUniformData.set(cam.viewMatrix, 16);
+      sceneUniformData.set(modelView, 32);
+      sceneUniformData.set(cam.position, 48);
+      sceneUniformData.set(
+        [
+          CONFIG["light position x"],
+          CONFIG["light position y"],
+          CONFIG["light position z"],
+        ],
+        52
+      );
+      gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, sceneUniformBuffer);
+      gl.bufferSubData(gl.UNIFORM_BUFFER, 0, sceneUniformData);
+
       /////////////////////////////////////////////////////////////////////////////////////////////
       //OPAQUE PASS
       ///////////////////////////////
@@ -575,7 +677,8 @@ function initApp(meshes) {
           CONFIG["light position z"],
         ],
         screenProgram,
-        drag_angles
+        drag_angles,
+        CONFIG["quads delta"]
       );
     }
 

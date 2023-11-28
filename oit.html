@@ -349,7 +349,63 @@ MADE BY
 
       }
     </script>
+    <script type="x-shader/x-vertex" id="unlit-vert">
+      #version 300 es
 
+      layout(location=0) in vec3 position;
+      layout(location=1) in vec2 uv;
+      layout(location=2) in vec3 normal;
+
+
+      layout(std140, column_major) uniform;
+
+      uniform SceneUniforms {
+          mat4 uProj;
+          mat4 uView;
+          mat4 uModelView;
+          vec4 uEyePosition;
+          vec4 uLightPosition;
+      };
+
+      out vec3 vPosition;
+      out vec2 vUV;
+      out vec3 vNormal;
+
+      void main() {
+          vec4 pos = uModelView * vec4(position,1.0);
+          vPosition = pos.xyz;
+          vUV = uv;
+          vNormal = mat3(transpose(inverse(uModelView))) * normal;
+
+          gl_Position =  uProj* uModelView *vec4(position,1.0);
+      }
+    </script>
+ <script type="x-shader/x-fragment" id="empty">
+      #version 300 es
+      precision highp float;
+
+      layout(std140, column_major) uniform;
+      uniform SceneUniforms {
+          mat4 uProj;
+          mat4 uView;
+          mat4 uModelView;
+          vec4 uEyePosition;
+          vec4 uLightPosition;
+      };
+      uniform sampler2D uTexture;
+
+      in vec3 vPosition;
+      in vec2 vUV;
+      in vec3 vNormal;
+
+      out vec4 fragColor;
+
+      void main() {
+
+          fragColor = vec4(1.0,1.0,1.0,1.0);
+
+      }
+    </script>
     <script type="x-shader/x-vertex" id="vertex-quad">
       #version 300 es
 
@@ -363,13 +419,30 @@ MADE BY
       #version 300 es
       precision highp float;
 
-
+      uniform int uIsColor;
       uniform sampler2D screen;
 
       out vec4 fragColor;
+
+
+      float linearizeDepth(float depth) 
+            {
+              float near = 0.1;
+              float far = 100.0;
+              float z = depth * 2.0 - 1.0; // back to NDC 
+              return (2.0 * near * far) / (far + near - z * (far - near));	
+            }
       void main() {
           ivec2 fragCoord = ivec2(gl_FragCoord.xy);
-          fragColor = vec4(texelFetch(screen, fragCoord,0).rgb, 1.0f);
+
+          if(uIsColor==1){
+            float depth = linearizeDepth(texelFetch(screen, fragCoord,0).r) / 100.0;
+            fragColor = vec4(vec3(depth),1.0);
+            return;
+          }
+
+          fragColor = vec4(texelFetch(screen, fragCoord,0).rgb, 1.0f) ;
+
           //Post-processing
           //Gamma correction
           float gamma = 2.2;

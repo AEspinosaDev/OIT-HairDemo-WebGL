@@ -12,7 +12,8 @@ export function drawExampleScene(
   cam,
   lightPosition,
   screenProgram,
-  drag_angles
+  drag_angles,
+  delta
 ) {
   var gl = document.getElementById("gl-canvas").getContext("webgl2");
 
@@ -24,7 +25,7 @@ export function drawExampleScene(
     [0, 1, 0],
     [1, 0, 0],
   ];
-  const DELTA_Z = 2;
+  const DELTA_Z = delta;
 
   /////////////////////////////////////////////////////////////////////////////////////////////
   //OPAQUE PASS
@@ -56,17 +57,32 @@ export function drawExampleScene(
 
     setVector3(opaqueProgram, QUAD_COLORS[i], "uColor");
     gl.useProgram(opaqueProgram);
-    //Update uniforms
-    var sceneUniformData = new Float32Array(56);
-    sceneUniformData.set(cam.projMatrix);
-    sceneUniformData.set(cam.viewMatrix, 16);
-    sceneUniformData.set(modelView, 32);
-    sceneUniformData.set(cam.position, 48);
-    sceneUniformData.set(lightPosition, 52);
-    gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, sceneUniformBuffer);
-    gl.bufferSubData(gl.UNIFORM_BUFFER, 0, sceneUniformData);
+    // for (let i = 0; i < NUM_QUADS; i++) {
+    //   var modelView = mat4.create();
+    //   var model = mat4.create();
+    //   mat4.rotateX(model, model, drag_angles[0]);
+    //   mat4.rotateY(model, model, 0);
+    //   mat4.rotateZ(model, model, drag_angles[1]);
+    //   mat4.translate(model, model, vec3.fromValues(2 * i, 2 * i, i * -DELTA_Z));
 
-    //draw(quadArray);
+    //   mat4.scale(model, model, vec3.fromValues(10, 10, 10));
+    //   mat4.multiply(modelView, cam.viewMatrix, model);
+
+    //   setVector3(opaqueProgram, QUAD_COLORS[i], "uHairColor");
+    //   gl.useProgram(opaqueProgram);
+
+    //   //Update uniforms
+    //   var sceneUniformData = new Float32Array(56);
+    //   sceneUniformData.set(cam.projMatrix);
+    //   sceneUniformData.set(cam.viewMatrix, 16);
+    //   sceneUniformData.set(modelView, 32);
+    //   sceneUniformData.set(cam.position, 48);
+    //   sceneUniformData.set(lightPosition, 52);
+    //   gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, sceneUniformBuffer);
+    //   gl.bufferSubData(gl.UNIFORM_BUFFER, 0, sceneUniformData);
+
+    //   draw(quadArray);
+    // }
   }
 
   /////////////////////////////////////////////////////////////////////////////////////////////
