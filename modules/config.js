@@ -9,9 +9,9 @@ export const CONFIG={
     "hair opacity": 0.99,
     "skin color": [255,206,180],
 
-    "light position x": 15,
-    "light position y": 0,
-    "light position z": 7,
+    "light position x": -6,
+    "light position y": 7,
+    "light position z": 15,
     
     "show depth map": false,
 
@@ -19,5 +19,8 @@ export const CONFIG={
     "weight func": { Maguire2017: 0, OriginalPaper_Eq9: 1, Twitter: 2, TarekSherif: 3, LearnOpengGL:4, },
 
     "simple scene": false,
-    "quads delta":  2
+    "quads delta":  2,
+
+    "far": 100,
+    "near":1,
   }

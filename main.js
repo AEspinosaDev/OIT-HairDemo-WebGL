@@ -21,12 +21,14 @@ var scale = 1;
 var canvas = document.getElementById("gl-canvas");
 var renderHair = true;
 var useInput = true;
+var depthLayers = 8;
 
 function initApp(meshes) {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
 
   meshes.hair.calculateTangentsAndBitangents();
+  console.log("Loaded meshes");
 
   var gl = canvas.getContext("webgl2", { antialias: false });
 
@@ -47,6 +49,7 @@ function initApp(meshes) {
   //DEEP PROGRAM
   var deepProgram = createProgram("unlit-vert", "empty");
   //OPACITY PROGRAM
+  var opacityProgram = createProgram("unlit-vert", "opacity-frag");
 
   // ACCUMULATION PROGRAM
   var accumProgram = createProgram("vertex-accum", "fragment-accum");
@@ -57,92 +60,7 @@ function initApp(meshes) {
   // SCREEN PROGRAM
   var screenProgram = createProgram("vertex-quad", "screen-draw");
 
-  ////////////////////////////////
-  ////GUI SETUP
-  //////////////////////////////////
-
-  //#region gui
-  const gui = new dat.GUI();
-  const folder = gui.addFolder("Configuration");
-  folder.add(CONFIG, "draw head");
-  folder.add(CONFIG, "draw hair");
-  folder.add(CONFIG, "front face");
-  folder.add(CONFIG, "back face");
-  folder.addColor(CONFIG, "hair color").onChange(function () {
-    setVector3(
-      accumProgram,
-      [
-        CONFIG["hair color"][0] / 255.0,
-        CONFIG["hair color"][1] / 255.0,
-        CONFIG["hair color"][2] / 255.0,
-      ],
-      "uHairColor"
-    );
-  });
-
-  folder.addColor(CONFIG, "skin color").onChange(function () {
-    setVector3(
-      opaqueProgram,
-      [
-        CONFIG["skin color"][0] / 255.0,
-        CONFIG["skin color"][1] / 255.0,
-        CONFIG["skin color"][2] / 255.0,
-      ],
-      "uColor"
-    );
-  });
-  folder.add(CONFIG, "light position x", -20, 20, 1);
-  folder.add(CONFIG, "light position y", -20, 20, 1);
-  folder.add(CONFIG, "light position z", -20, 20, 1);
-  folder.add(CONFIG, "show depth map").onChange(function (value) {
-    gl.activeTexture(gl.TEXTURE3);
-    if (!value) {
-      gl.bindTexture(gl.TEXTURE_2D, op_colorTarget);
-      setInt(screenProgram, 0, "uIsColor");
-    } else {
-      setInt(screenProgram, 1, "uIsColor");
-      gl.bindTexture(gl.TEXTURE_2D, lightDepthTarget);
-    }
-  });
-  const t_folder = folder.addFolder("Transparency");
-  t_folder.open();
-  t_folder.add(CONFIG, "hair opacity", 0, 1, 0.05).onChange(function () {
-    setFLoat(accumProgram, CONFIG["hair opacity"], "uHairOpacity");
-  });
-  t_folder.add(CONFIG, "weighted").onChange(function () {
-    setInt(accumProgram, CONFIG["weighted"], "uWeighted");
-  });
-  t_folder
-    .add(CONFIG, "weight func", CONFIG["weight func"])
-    .onChange(function (value) {
-      setInt(accumProgram, value, "uWeightFunc");
-    });
-  const extra_folder = folder.addFolder("Extra");
-  extra_folder.open();
-  extra_folder.add(CONFIG, "simple scene").onChange(function () {
-    setVector3(
-      accumProgram,
-      [
-        CONFIG["hair color"][0] / 255.0,
-        CONFIG["hair color"][1] / 255.0,
-        CONFIG["hair color"][2] / 255.0,
-      ],
-      "uHairColor"
-    );
-    setVector3(
-      opaqueProgram,
-      [
-        CONFIG["skin color"][0] / 255.0,
-        CONFIG["skin color"][1] / 255.0,
-        CONFIG["skin color"][2] / 255.0,
-      ],
-      "uColor"
-    );
-    setInt(accumProgram, CONFIG["simple scene"], "uSimpleScene");
-  });
-  extra_folder.add(CONFIG, "quads delta", 0, 10, 0.5);
-  folder.open();
-  //#endregion
+  initGui();
 
   ////////////////////////////////
   //  SET UP FRAMEBUFFERS
@@ -186,7 +104,7 @@ function initApp(meshes) {
   gl.texStorage2D(
     gl.TEXTURE_2D,
     1,
-    gl.DEPTH_COMPONENT16,
+    gl.DEPTH_COMPONENT24,
     gl.drawingBufferWidth,
     gl.drawingBufferHeight
   );
@@ -197,6 +115,12 @@ function initApp(meshes) {
     depthTarget,
     0
   );
+
+  if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE) {
+    console.log("Opaque FBO " + "success (FRAMEBUFFER COMPLETE)");
+  } else {
+    console.log("Opaque FBO " + "error (FRAMEBUFFER ICOMPLETE)");
+  }
 
   var accumBuffer = gl.createFramebuffer();
 
@@ -257,6 +181,12 @@ function initApp(meshes) {
 
   gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
 
+  if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE) {
+    console.log("Accum FBO " + "success (FRAMEBUFFER COMPLETE)");
+  } else {
+    console.log("Accum FBO " + "error (FRAMEBUFFER ICOMPLETE)");
+  }
+
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
   //#endregion
@@ -288,6 +218,64 @@ function initApp(meshes) {
     0
   );
 
+  if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE) {
+    console.log("Depth FBO " + "success (FRAMEBUFFER COMPLETE)");
+  } else {
+    console.log("Depth FBO " + "error (FRAMEBUFFER ICOMPLETE)");
+  }
+
+  var opacityBuffer = gl.createFramebuffer();
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, opacityBuffer);
+
+  var opacityTarget = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D_ARRAY, opacityTarget);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texStorage3D(
+    gl.TEXTURE_2D_ARRAY,
+    1,
+    gl.RGBA16F,
+    gl.drawingBufferWidth,
+    gl.drawingBufferHeight,
+    depthLayers/4
+  );
+
+  // gl.framebufferTexture2D(
+  //   gl.FRAMEBUFFER,
+  //   gl.DEPTH_ATTACHMENT,
+  //   gl.TEXTURE_2D,
+  //   depthTarget,
+  //   0
+  // );
+
+  var drawBuffers = [];
+  for (let i = 0; i < depthLayers / 4; i++) {
+    gl.framebufferTextureLayer(
+      gl.FRAMEBUFFER,
+      gl.COLOR_ATTACHMENT0 + i,
+      opacityTarget,
+      0,
+      i
+    );
+    drawBuffers.push(gl.COLOR_ATTACHMENT0 + i);
+  }
+
+  gl.drawBuffers(drawBuffers);
+  // gl.drawBuffers([ gl.COLOR_ATTACHMENT0,gl.COLOR_ATTACHMENT3]);
+
+
+  if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE) {
+    console.log("Opacity FBO " + "success (FRAMEBUFFER COMPLETE)");
+  } else {
+    console.log("Opacity FBO " + "error (FRAMEBUFFER ICOMPLETE)");
+  }
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
   //#endregion
 
   /////////////////////
@@ -308,7 +296,6 @@ function initApp(meshes) {
     true
   );
 
-  console.log(meshes.hair);
   //////////////////////
   // SET UP UNIFORMS
   //////////////////////
@@ -322,22 +309,23 @@ function initApp(meshes) {
     vec3.fromValues(0, 1, 0),
     false,
     Math.PI / 2,
-    100,
-    0.1
+    CONFIG["far"],
+    CONFIG["near"]
   );
 
   var modelView = mat4.create();
   var model = mat4.create();
   mat4.multiply(modelView, model, cam.viewMatrix);
 
-  var image = new Image();
-
   var sceneUniformData = new Float32Array(56);
   var sceneUniformBuffer = gl.createBuffer();
   gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, sceneUniformBuffer);
   gl.bufferData(gl.UNIFORM_BUFFER, sceneUniformData, gl.STATIC_DRAW);
 
+  var image = new Image();
+  var highLightImage = new Image();
   image.src = "resources/T_StandardWSet_Alpha.png";
+  highLightImage.src = "resources/highlight_texture.png";
 
   image.onload = function () {
     ///////////////////////
@@ -382,6 +370,12 @@ function initApp(meshes) {
 
     gl.activeTexture(gl.TEXTURE3);
     gl.bindTexture(gl.TEXTURE_2D, op_colorTarget);
+
+    gl.activeTexture(gl.TEXTURE5);
+    gl.bindTexture(gl.TEXTURE_2D, depthTarget);
+    setInt(opacityProgram, 5, "uDepthText");
+    setInt(opacityProgram, 0, "uOpacityText");
+
     gl.useProgram(screenProgram);
 
     setInt(screenProgram, 3, "screen");
@@ -411,8 +405,147 @@ function initApp(meshes) {
     setInt(compositeProgram, 1, "uAccumulate");
     setInt(compositeProgram, 2, "uAccumulateAlpha");
 
+    setFLoat(screenProgram, CONFIG["near"], "uNear");
+    setFLoat(screenProgram, CONFIG["far"], "uFar");
+
     requestAnimationFrame(draw);
   };
+  highLightImage.onload = function () {
+    var texture_h = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE4);
+    gl.bindTexture(gl.TEXTURE_2D, texture_h);
+
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(
+      gl.TEXTURE_2D,
+      gl.TEXTURE_MIN_FILTER,
+      gl.LINEAR_MIPMAP_LINEAR
+    );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+
+    var levels = (levels =
+      Math.floor(Math.log2(Math.max(this.width, this.height))) + 1);
+    gl.texStorage2D(
+      gl.TEXTURE_2D,
+      levels,
+      gl.RGBA8,
+      highLightImage.width,
+      highLightImage.height
+    );
+    gl.texSubImage2D(
+      gl.TEXTURE_2D,
+      0,
+      0,
+      0,
+      highLightImage.width,
+      highLightImage.height,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      highLightImage
+    );
+    gl.generateMipmap(gl.TEXTURE_2D);
+
+    setInt(accumProgram, 4, "uHighLight");
+  };
+
+  function initGui() {
+    const gui = new dat.GUI();
+    const folder = gui.addFolder("Configuration");
+    folder.add(CONFIG, "draw head");
+    folder.add(CONFIG, "draw hair");
+    folder.add(CONFIG, "front face");
+    folder.add(CONFIG, "back face");
+    folder.addColor(CONFIG, "hair color").onChange(function () {
+      setVector3(
+        accumProgram,
+        [
+          CONFIG["hair color"][0] / 255.0,
+          CONFIG["hair color"][1] / 255.0,
+          CONFIG["hair color"][2] / 255.0,
+        ],
+        "uHairColor"
+      );
+    });
+
+    folder.addColor(CONFIG, "skin color").onChange(function () {
+      setVector3(
+        opaqueProgram,
+        [
+          CONFIG["skin color"][0] / 255.0,
+          CONFIG["skin color"][1] / 255.0,
+          CONFIG["skin color"][2] / 255.0,
+        ],
+        "uColor"
+      );
+    });
+    folder.add(CONFIG, "light position x", -20, 20, 1);
+    folder.add(CONFIG, "light position y", -20, 20, 1);
+    folder.add(CONFIG, "light position z", -20, 20, 1);
+    folder.add(CONFIG, "far", 1, 10000, 1).onChange(function (value) {
+      cam.far = value;
+      cam.Refresh(canvas);
+      setFLoat(screenProgram, value, "uFar");
+    });
+    folder.add(CONFIG, "near", 0.00001, 1, 0.0001).onChange(function (value) {
+      cam.near = value;
+      cam.Refresh(canvas);
+      setFLoat(screenProgram, value, "uNear");
+    });
+    const t_folder = folder.addFolder("Transparency");
+    t_folder.open();
+    t_folder.add(CONFIG, "hair opacity", 0, 1, 0.05).onChange(function () {
+      setFLoat(accumProgram, CONFIG["hair opacity"], "uHairOpacity");
+    });
+    t_folder.add(CONFIG, "weighted").onChange(function () {
+      setInt(accumProgram, CONFIG["weighted"], "uWeighted");
+    });
+    t_folder
+      .add(CONFIG, "weight func", CONFIG["weight func"])
+      .onChange(function (value) {
+        setInt(accumProgram, value, "uWeightFunc");
+      });
+
+    const op_folder = folder.addFolder("Self-Occlusion");
+    op_folder.add(CONFIG, "show depth map").onChange(function (value) {
+      gl.activeTexture(gl.TEXTURE3);
+      if (!value) {
+        gl.bindTexture(gl.TEXTURE_2D, op_colorTarget);
+        setInt(screenProgram, 0, "uIsColor");
+      } else {
+        setInt(screenProgram, 1, "uIsColor");
+        gl.bindTexture(gl.TEXTURE_2D, lightDepthTarget);
+      }
+    });
+    op_folder.open();
+
+    const extra_folder = folder.addFolder("Extra");
+    extra_folder.open();
+    extra_folder.add(CONFIG, "simple scene").onChange(function () {
+      setVector3(
+        accumProgram,
+        [
+          CONFIG["hair color"][0] / 255.0,
+          CONFIG["hair color"][1] / 255.0,
+          CONFIG["hair color"][2] / 255.0,
+        ],
+        "uHairColor"
+      );
+      setVector3(
+        opaqueProgram,
+        [
+          CONFIG["skin color"][0] / 255.0,
+          CONFIG["skin color"][1] / 255.0,
+          CONFIG["skin color"][2] / 255.0,
+        ],
+        "uColor"
+      );
+      setInt(accumProgram, CONFIG["simple scene"], "uSimpleScene");
+    });
+    extra_folder.add(CONFIG, "quads delta", 0, 10, 0.5);
+    folder.open();
+  }
 
   function draw(now) {
     now *= 0.001; // seconds;
@@ -423,11 +556,14 @@ function initApp(meshes) {
     //Update model matrix
     var modelView = mat4.create();
     var model = mat4.create();
-    mat4.rotateX(model, model, -45);
+    mat4.rotateX(model, model, -1.57);
+    // mat4.rotateZ(model, model, 1.57);
+
     mat4.rotateX(model, model, drag_angles[0]);
     mat4.rotateY(model, model, 0);
     mat4.rotateZ(model, model, drag_angles[1]);
     mat4.scale(model, model, vec3.fromValues(scale, scale, scale));
+
     /////////////////////////////////////////////////////////////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////////////////
     //  █▀▄ █▀█ ▄▀█ █░█░█      █▀▀ █▀█ █▀█ █▀▀
@@ -462,9 +598,11 @@ function initApp(meshes) {
     );
     gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, sceneUniformBuffer);
     gl.bufferSubData(gl.UNIFORM_BUFFER, 0, sceneUniformData);
+
     /////////////////////////////////////////////////////////////////////////////////////////////
     //DEEP PASS
     ///////////////////////////////
+
     // CONFIGURE
     gl.enable(gl.DEPTH_TEST);
     gl.depthMask(true);
@@ -483,17 +621,40 @@ function initApp(meshes) {
       gl.UNSIGNED_SHORT,
       0
     );
+
     /////////////////////////////////////////////////////////////////////////////////////////////
     //OPACITY PASS
     ///////////////////////////////
+    // CONFIGURE
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthMask(false);
+    gl.depthFunc(gl.LESS);
+    gl.disable(gl.CULL_FACE);
+    gl.clearColor(0.0, 0.0, 0.0, 1.0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, opacityBuffer);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    // gl.enable(gl.BLEND);
+    //Blend function ????
+
+    //DRAW
+    gl.useProgram(opacityProgram);
+    gl.bindVertexArray(hairArray);
+    gl.drawElements(
+      gl.TRIANGLES,
+      meshes.hair.indices.length,
+      gl.UNSIGNED_SHORT,
+      0
+    );
 
     //Save opacity textures
 
     //In the hair shading part (accumulation), find the layer, lookup the texture opacity and reduce illumination color
     //So in order for that we have to look again for the depth texture and a lot of opacity textures
 
-
-
+    /////////////////////////////////////////////////////////////////////////////////////////////
+    //OPAQUE PASS
+    ///////////////////////////////
     if (!CONFIG["simple scene"]) {
       mat4.multiply(modelView, cam.viewMatrix, model);
       sceneUniformData = new Float32Array(56);
@@ -511,10 +672,6 @@ function initApp(meshes) {
       );
       gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, sceneUniformBuffer);
       gl.bufferSubData(gl.UNIFORM_BUFFER, 0, sceneUniformData);
-
-      /////////////////////////////////////////////////////////////////////////////////////////////
-      //OPAQUE PASS
-      ///////////////////////////////
 
       // CONFIGURE
       gl.enable(gl.DEPTH_TEST);
