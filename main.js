@@ -2,6 +2,7 @@ import {
   createProgram,
   setFLoat,
   setInt,
+  setMat4,
   setVector3,
 } from "./modules/program.js";
 import {
@@ -15,6 +16,8 @@ import { drawExampleScene } from "./modules/exampleScene.js";
 var keys = {};
 let then = 0;
 var mouse_pressed = false;
+var control_pressed = false;
+
 var drag_angles = [0, 0];
 var mouseLast = [0, 0];
 var scale = 1;
@@ -241,7 +244,7 @@ function initApp(meshes) {
     gl.RGBA16F,
     gl.drawingBufferWidth,
     gl.drawingBufferHeight,
-    depthLayers/4
+    depthLayers / 4
   );
 
   // gl.framebufferTexture2D(
@@ -266,7 +269,6 @@ function initApp(meshes) {
 
   gl.drawBuffers(drawBuffers);
   // gl.drawBuffers([ gl.COLOR_ATTACHMENT0,gl.COLOR_ATTACHMENT3]);
-
 
   if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE) {
     console.log("Opacity FBO " + "success (FRAMEBUFFER COMPLETE)");
@@ -372,14 +374,20 @@ function initApp(meshes) {
     gl.bindTexture(gl.TEXTURE_2D, op_colorTarget);
 
     gl.activeTexture(gl.TEXTURE5);
-    gl.bindTexture(gl.TEXTURE_2D, depthTarget);
+    gl.bindTexture(gl.TEXTURE_2D, lightDepthTarget);
     setInt(opacityProgram, 5, "uDepthText");
-    setInt(opacityProgram, 0, "uOpacityText");
-
+    setInt(accumProgram, 5, "uDepthText");
+    
+    
+    gl.activeTexture(gl.TEXTURE6);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, opacityTarget);
+    setInt(accumProgram, 6, "uOpacitiesText");
+    
     gl.useProgram(screenProgram);
-
+    
     setInt(screenProgram, 3, "screen");
     setInt(accumProgram, 0, "uTexture");
+    setInt(opacityProgram, 0, "uOpacityText");
     setVector3(
       accumProgram,
       [
@@ -401,12 +409,30 @@ function initApp(meshes) {
     setFLoat(accumProgram, CONFIG["hair opacity"], "uHairOpacity");
     setInt(accumProgram, 2, "uWeightFunc");
     setInt(accumProgram, 1, "uWeighted");
-
+    
     setInt(compositeProgram, 1, "uAccumulate");
     setInt(compositeProgram, 2, "uAccumulateAlpha");
-
+    
     setFLoat(screenProgram, CONFIG["near"], "uNear");
     setFLoat(screenProgram, CONFIG["far"], "uFar");
+    setFLoat(accumProgram, CONFIG["near"], "uNear");
+    setFLoat(accumProgram, CONFIG["far"], "uFar");
+    
+    setFLoat(accumProgram, CONFIG["ambient strength"], "uAmbient");
+    
+    setFLoat(opaqueProgram, CONFIG["ambient strength"], "uAmbient");
+    
+    setFLoat(opacityProgram, CONFIG["hair opacity"], "uHairOpacity");
+    
+    setFLoat(opacityProgram,CONFIG["layer offset"],"uLayerOffset")
+    setInt(opacityProgram,CONFIG["linearize depth op"],"uLinearize")
+    
+    
+    setInt(accumProgram,CONFIG["enable shadows"],"uEnableShadows")
+    setFLoat(accumProgram,CONFIG["layer offset"],"uLayerOffset")
+    setInt(accumProgram, CONFIG["linearize depth"], "uLinearize");
+    setInt(accumProgram, CONFIG["linearize depth op"], "uLinearizeOp");
+
 
     requestAnimationFrame(draw);
   };
@@ -487,16 +513,25 @@ function initApp(meshes) {
       cam.far = value;
       cam.Refresh(canvas);
       setFLoat(screenProgram, value, "uFar");
+      setFLoat(accumProgram, value, "uFar");
     });
     folder.add(CONFIG, "near", 0.00001, 1, 0.0001).onChange(function (value) {
       cam.near = value;
       cam.Refresh(canvas);
       setFLoat(screenProgram, value, "uNear");
+      setFLoat(accumProgram, value, "uNear");
     });
+    folder
+      .add(CONFIG, "ambient strength", 0, 1, 0.01)
+      .onChange(function (value) {
+        setFLoat(accumProgram, value, "uAmbient");
+        setFLoat(opaqueProgram, value, "uAmbient");
+      });
     const t_folder = folder.addFolder("Transparency");
     t_folder.open();
     t_folder.add(CONFIG, "hair opacity", 0, 1, 0.05).onChange(function () {
       setFLoat(accumProgram, CONFIG["hair opacity"], "uHairOpacity");
+      setFLoat(opacityProgram, CONFIG["hair opacity"], "uHairOpacity");
     });
     t_folder.add(CONFIG, "weighted").onChange(function () {
       setInt(accumProgram, CONFIG["weighted"], "uWeighted");
@@ -506,8 +541,14 @@ function initApp(meshes) {
       .onChange(function (value) {
         setInt(accumProgram, value, "uWeightFunc");
       });
+    t_folder.add(CONFIG, "linearize depth").onChange(function (value) {
+      setInt(accumProgram, value, "uLinearize");
+    });
 
     const op_folder = folder.addFolder("Self-Occlusion");
+    op_folder.add(CONFIG,"enable shadows").onChange(function (value) {
+      setInt(accumProgram,value,"uEnableShadows")
+    });
     op_folder.add(CONFIG, "show depth map").onChange(function (value) {
       gl.activeTexture(gl.TEXTURE3);
       if (!value) {
@@ -518,6 +559,16 @@ function initApp(meshes) {
         gl.bindTexture(gl.TEXTURE_2D, lightDepthTarget);
       }
     });
+    op_folder.add(CONFIG,"layer offset",0.0005,0.1,0.0005).onChange(function (value) {
+      setFLoat(opacityProgram,value,"uLayerOffset")
+      setFLoat(accumProgram,value,"uLayerOffset")
+
+    })
+    op_folder.add(CONFIG,"linearize depth op").onChange(function (value) {
+      setInt(opacityProgram,value,"uLinearize")
+      setInt(accumProgram,value,"uLinearizeOp")
+
+    })
     op_folder.open();
 
     const extra_folder = folder.addFolder("Extra");
@@ -563,6 +614,7 @@ function initApp(meshes) {
     mat4.rotateY(model, model, 0);
     mat4.rotateZ(model, model, drag_angles[1]);
     mat4.scale(model, model, vec3.fromValues(scale, scale, scale));
+    setMat4(accumProgram,model,"uModel")
 
     /////////////////////////////////////////////////////////////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////////////////
@@ -579,9 +631,10 @@ function initApp(meshes) {
         CONFIG["light position y"],
         CONFIG["light position z"]
       ),
-      vec3.fromValues(0, 0.5, 0),
+      vec3.fromValues(0, 1, 0),
       vec3.fromValues(0, 1, 0)
     );
+    setMat4(accumProgram,lightView,"uLightView");
     mat4.multiply(modelView, lightView, model);
     var sceneUniformData = new Float32Array(56);
     sceneUniformData.set(cam.projMatrix);
@@ -634,11 +687,19 @@ function initApp(meshes) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, opacityBuffer);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    // gl.enable(gl.BLEND);
-    //Blend function ????
+    //Additive
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE);
+
+    setFLoat(opacityProgram,canvas.width,"uWidth");
+    setFLoat(opacityProgram,canvas.height,"uHeight");
+    
+
 
     //DRAW
     gl.useProgram(opacityProgram);
+
+
     gl.bindVertexArray(hairArray);
     gl.drawElements(
       gl.TRIANGLES,
@@ -646,11 +707,6 @@ function initApp(meshes) {
       gl.UNSIGNED_SHORT,
       0
     );
-
-    //Save opacity textures
-
-    //In the hair shading part (accumulation), find the layer, lookup the texture opacity and reduce illumination color
-    //So in order for that we have to look again for the depth texture and a lot of opacity textures
 
     /////////////////////////////////////////////////////////////////////////////////////////////
     //OPAQUE PASS
@@ -806,7 +862,6 @@ function initApp(meshes) {
       gl.disable(gl.DEPTH_TEST);
       gl.depthMask(gl.TRUE);
       gl.disable(gl.BLEND);
-      // gl.enable(gl.FRAMEBUFFER_SRGB);
 
       // Bind BackBuffer
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -816,8 +871,6 @@ function initApp(meshes) {
       gl.useProgram(screenProgram);
       gl.bindVertexArray(quadArray);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
-
-      // gl.disable(gl.FRAMEBUFFER_SRGB);
     } else {
       drawExampleScene(
         quadArray,
@@ -856,18 +909,22 @@ window.onload = function () {
 };
 window.addEventListener("keydown", (e) => {
   keys[e.key] = true;
-  if (keys["p"] || keys["P"]) {
-    renderHair = renderHair ? false : true;
-  }
+  // if (keys["p"] || keys["P"]) {
+  //   renderHair = renderHair ? false : true;
+
+    if(e.ctrlKey) control_pressed = true;
+  
 });
 window.addEventListener("keyup", (e) => {
   keys[e.key] = false;
+
+  if (e.keyCode == 17) control_pressed = false
 });
 window.addEventListener("mousemove", (e) => {
   var x = e.clientX;
   var y = e.clientY;
 
-  if (mouse_pressed) {
+  if (mouse_pressed && control_pressed) {
     var speed = 10 / canvas.clientHeight;
     drag_angles[0] += speed * (y - mouseLast[1]);
     drag_angles[1] += speed * (x - mouseLast[0]);
