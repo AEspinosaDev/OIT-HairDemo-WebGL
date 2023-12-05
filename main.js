@@ -343,7 +343,7 @@ function initApp(meshes) {
     gl.texParameteri(
       gl.TEXTURE_2D,
       gl.TEXTURE_MIN_FILTER,
-      gl.LINEAR_MIPMAP_LINEAR
+      gl.GL_LINEAR
     );
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
@@ -387,6 +387,7 @@ function initApp(meshes) {
     
     setInt(screenProgram, 3, "screen");
     setInt(accumProgram, 0, "uTexture");
+    setInt(deepProgram, 0, "uTexture");
     setInt(opacityProgram, 0, "uOpacityText");
     setVector3(
       accumProgram,
@@ -412,6 +413,8 @@ function initApp(meshes) {
     
     setInt(compositeProgram, 1, "uAccumulate");
     setInt(compositeProgram, 2, "uAccumulateAlpha");
+    
+
     
     setFLoat(screenProgram, CONFIG["near"], "uNear");
     setFLoat(screenProgram, CONFIG["far"], "uFar");
@@ -624,6 +627,15 @@ function initApp(meshes) {
 
     //Update uniforms
     var lightView = mat4.create();
+    // var lightProj =  mat4.create();
+
+    // mat4.perspective(
+    //   lightProj,
+    //   Math.PI / 2,
+    //   1,
+    //   CONFIG["near"],
+    //   CONFIG["far"]);
+
     mat4.lookAt(
       lightView,
       vec3.fromValues(
@@ -661,6 +673,7 @@ function initApp(meshes) {
     gl.depthMask(true);
     gl.depthFunc(gl.LESS);
     gl.disable(gl.CULL_FACE);
+    gl.disable(gl.BLEND);
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
     gl.bindFramebuffer(gl.FRAMEBUFFER, deepBuffer);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -679,17 +692,24 @@ function initApp(meshes) {
     //OPACITY PASS
     ///////////////////////////////
     // CONFIGURE
-    gl.enable(gl.DEPTH_TEST);
+    gl.disable(gl.DEPTH_TEST);
     gl.depthMask(false);
     gl.depthFunc(gl.LESS);
-    gl.disable(gl.CULL_FACE);
+   
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
     gl.bindFramebuffer(gl.FRAMEBUFFER, opacityBuffer);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
+    // gl.enable(gl.CULL_FACE);
+    // gl.cullFace(gl.FRONT);
+
     //Additive
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.ONE, gl.ONE);
+    // gl.enable(gl.BLEND);
+     gl.disable(gl.BLEND);
+
+    // gl.blendFunc(gl.ONE_MINUS_SRC_ALPHA, gl.SRC_ALPHA);
+    // gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
+    // gl.blendFunc(gl.ONE, gl.ONE);
 
     setFLoat(opacityProgram,canvas.width,"uWidth");
     setFLoat(opacityProgram,canvas.height,"uHeight");
@@ -901,7 +921,7 @@ function initApp(meshes) {
 window.onload = function () {
   OBJ.downloadMeshes(
     {
-      hair: "./resources/hair__.obj",
+      hair: "./resources/hair_h__.obj",
       head: "./resources/head_testing.obj", // located in the models folder on the server
     },
     initApp

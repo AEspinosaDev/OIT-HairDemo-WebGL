@@ -10,13 +10,13 @@ export const CONFIG={
     "hair opacity": 0.99,
     "skin color": [255,206,180],
 
-    "light position x": -6,
+    "light position x": -6, //-12, 7,20
     "light position y": 7,
     "light position z": 20,
     
     "enable shadows": true,
     "show depth map": false,
-    "layer offset": 0.005,
+    "layer offset": 0.0085,
     "linearize depth op": true,
 
     "weighted": true,
@@ -25,7 +25,7 @@ export const CONFIG={
     "simple scene": false,
     "quads delta":  2,
 
-    "far": 100,
+    "far": 50,
     "near":1,
 
     "ambient strength": 0.2,
