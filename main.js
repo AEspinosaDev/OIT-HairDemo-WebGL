@@ -25,6 +25,7 @@ var canvas = document.getElementById("gl-canvas");
 var renderHair = true;
 var useInput = true;
 var depthLayers = 8;
+const TEXTURE_RES = 4098
 
 function initApp(meshes) {
   canvas.width = window.innerWidth;
@@ -210,8 +211,8 @@ function initApp(meshes) {
     gl.TEXTURE_2D,
     1,
     gl.DEPTH_COMPONENT16,
-    gl.drawingBufferWidth,
-    gl.drawingBufferHeight
+    TEXTURE_RES,
+    TEXTURE_RES
   );
   gl.framebufferTexture2D(
     gl.FRAMEBUFFER,
@@ -242,18 +243,11 @@ function initApp(meshes) {
     gl.TEXTURE_2D_ARRAY,
     1,
     gl.RGBA16F,
-    gl.drawingBufferWidth,
-    gl.drawingBufferHeight,
+    TEXTURE_RES,
+    TEXTURE_RES,
     depthLayers / 4
   );
-
-  // gl.framebufferTexture2D(
-  //   gl.FRAMEBUFFER,
-  //   gl.DEPTH_ATTACHMENT,
-  //   gl.TEXTURE_2D,
-  //   depthTarget,
-  //   0
-  // );
+ 
 
   var drawBuffers = [];
   for (let i = 0; i < depthLayers / 4; i++) {
@@ -667,7 +661,7 @@ function initApp(meshes) {
     /////////////////////////////////////////////////////////////////////////////////////////////
     //DEEP PASS
     ///////////////////////////////
-
+    gl.viewport(0, 0,TEXTURE_RES,TEXTURE_RES);
     // CONFIGURE
     gl.enable(gl.DEPTH_TEST);
     gl.depthMask(true);
@@ -704,15 +698,15 @@ function initApp(meshes) {
     // gl.cullFace(gl.FRONT);
 
     //Additive
+    // gl.disable(gl.BLEND);
     // gl.enable(gl.BLEND);
-     gl.disable(gl.BLEND);
 
     // gl.blendFunc(gl.ONE_MINUS_SRC_ALPHA, gl.SRC_ALPHA);
     // gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
     // gl.blendFunc(gl.ONE, gl.ONE);
 
-    setFLoat(opacityProgram,canvas.width,"uWidth");
-    setFLoat(opacityProgram,canvas.height,"uHeight");
+    setFLoat(opacityProgram,TEXTURE_RES,"uWidth");
+    setFLoat(opacityProgram,TEXTURE_RES,"uHeight");
     
 
 
@@ -731,6 +725,8 @@ function initApp(meshes) {
     /////////////////////////////////////////////////////////////////////////////////////////////
     //OPAQUE PASS
     ///////////////////////////////
+    gl.viewport(0, 0, canvas.width, canvas.height);
+
     if (!CONFIG["simple scene"]) {
       mat4.multiply(modelView, cam.viewMatrix, model);
       sceneUniformData = new Float32Array(56);
